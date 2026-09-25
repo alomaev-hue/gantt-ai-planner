@@ -99,20 +99,21 @@ Browser (React SPA)
 ┌──────────────────────── FastAPI (1 uvicorn worker) ────────────────────────┐
 │ api/        роутеры, сессии по cookie, проверка Origin                     │
 │ agent/      цикл агента (Anthropic SDK) ──► MCP-клиент внутри процесса ─┐  │
-│ mcp_server/ FastMCP-сервер "planner" (инструменты) ◄─────────────────────┘  │
+│ mcp_server/ FastMCP-сервер "planner" (инструменты) ◄─────────────────────┘ │
 │ services/   PlanService: загрузить → применить операции → пересчитать →    │
-│             сохранить версию → отправить событие                          │
+│             сохранить версию → отправить событие                           │
 │ domain/     модели, планировщик (CPM), операции, валидация, diff (без I/O) │
 │ excel/      парсер импорта, экспорт (без I/O)                              │
-│ db/         модели SQLAlchemy 2, репозиторий, миграции Alembic             │
-└──────────────────────────────────────────────────────────────────────────────┘
+│ db/         модели SQLAlchemy 2, репозиторий                               │
+│ migrations/ миграции Alembic                                               │
+└────────────────────────────────────────────────────────────────────────────┘
                               │ asyncpg
                         PostgreSQL 17
 ```
 
 Внешний `/mcp` (HTTP-эндпоинт с токенами для сторонних MCP-клиентов) в коде пока не смонтирован — таблица `mcp_tokens` в схеме БД уже есть, но роуты выпуска/отзыва токена и сам `/mcp` — это следующий шаг (см. Roadmap). Сейчас единственный MCP-клиент — тот, что использует агент внутри процесса backend.
 
-Реальные пакеты кода: `backend/app/domain`, `backend/app/excel`, `backend/app/services`, `backend/app/mcp_server`, `backend/app/agent`, `backend/app/api`, `backend/app/main.py`.
+Реальные пакеты кода: `backend/app/domain`, `backend/app/excel`, `backend/app/services`, `backend/app/mcp_server`, `backend/app/agent`, `backend/app/api`, `backend/app/db`, `backend/app/migrations`, `backend/app/main.py`.
 
 ## Ключевые решения (и почему)
 
@@ -160,7 +161,7 @@ Browser (React SPA)
 
 Сейчас MCP используется только агентом внутри процесса backend (`backend/app/mcp_server/client.py`, `PlanToolClient`). Внешний HTTP-эндпоинт `/mcp` с выпуском Bearer-токенов (`mcp_<...>`) для подключения сторонних клиентов (Claude Code/Desktop) — часть Фазы 2 проекта и **пока не реализована**: таблица `mcp_tokens` в схеме БД создана заранее, но роутов выпуска/отзыва токена и самого `/mcp` в `backend/app/api` нет. Прогресс — в `docs/roadmap-to-production.md`.
 
-## Примеры команд чату
+## Примеры команд для чата
 
 Подсказки, которые видит пользователь в пустом чате (`frontend/src/components/chat/ChatPanel.tsx`):
 
