@@ -12,6 +12,8 @@ from app.api import routes_plan, routes_session
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import make_engine, make_sessionmaker
+from app.mcp_server.client import PlanToolClient
+from app.mcp_server.server import build_mcp
 from app.services.events import EventBus
 from app.services.locks import SessionLocks
 from app.services.plan_service import PlanService
@@ -39,7 +41,10 @@ def create_app(
             sm, EventBus(), SessionLocks(), max_versions=cfg.max_versions, today=today_fn
         )
         try:
-            yield
+            app.state.mcp = build_mcp(app.state.service, today=today_fn)
+            async with PlanToolClient(app.state.mcp) as tool_client:
+                app.state.tool_client = tool_client
+                yield
         finally:
             if engine is not None:
                 await engine.dispose()

@@ -54,8 +54,8 @@ def settings() -> Settings:
 @pytest.fixture
 async def app(settings, sessionmaker):
     application = create_app(settings, sessionmaker=sessionmaker, today=lambda: TODAY)
-    async with LifespanManager(application) as manager:
-        yield manager.app
+    async with LifespanManager(application):
+        yield application
 
 
 @pytest.fixture
