@@ -50,9 +50,20 @@
    - устанавливает cron `/etc/cron.d/gantt-planner-backup` (03:15 каждый
      день).
 3. После bootstrap вручную:
+   - сделать пакет `ghcr.io/alomaev-hue/gantt-ai-planner` публичным —
+     **один раз**, иначе `docker compose pull` на сервере (без залогина в
+     GHCR) не сможет скачать образ: GitHub → профиль/организация →
+     Packages → `gantt-ai-planner` → Package settings → Change
+     visibility → Public;
    - вписать реальный ключ Anthropic в
      `/opt/gantt-planner/secrets/anthropic_api_key` (без переноса строки
-     в конце — как отдаёт провайдер, `printf '%s' '<key>' > .../anthropic_api_key`);
+     в конце — как отдаёт провайдер, `printf '%s' '<key>' > .../anthropic_api_key`).
+     Пока владелец не заполнил этот файл (bootstrap создаёт его пустым),
+     приложение работает в демо-режиме без LLM — `make_llm()` видит
+     пустой ключ, логирует это (без содержимого ключа) и отдаёт
+     `FakeLLM` вместо `AnthropicLLM`, само приложение при этом не падает;
+     текущий режим виден в ответе `GET /api/meta` (`llm_mode`) и
+     значком в UI;
    - добавить публичный deploy-ключ CI в
      `/home/deploy/.ssh/authorized_keys` строкой вида:
      ```
