@@ -1,0 +1,167 @@
+"""Deterministic, stateless fake LLM for demo/dev use without an Anthropic key.
+
+Recognizes a small set of Russian imperative commands via regex and translates them to
+MCP tool calls (see the task brief for the exact rule table). Anything else gets a canned
+help message. Used when `settings.llm_provider == "fake"` or no API key is configured.
+"""
+
+import json
+import re
+from collections.abc import AsyncIterator
+from typing import Any
+
+from app.agent.llm import Completed, LLMEvent, LLMToolCall, LLMTurnResult, TextDelta
+
+HELP = (
+    "Я работаю в демо-режиме без LLM. Попробуйте: «Перенеси задачу 3 на 2 дня», "
+    "«Сдвинь все задачи Дмитрия на 3 дня», «Назначь задачу 5 на Анну Смирнову», "
+    "«Добавь задачу «Ревью» на 2 дня после 4», «Удали задачу 7», «Отмени»."
+)
+_CASE_ENDINGS = "аяиыуюе"
+_CHUNK = 12
+
+
+def _stem(word: str) -> str:
+    lower = word.lower()
+    if len(lower) >= 4 and lower[-1] in _CASE_ENDINGS:
+        return lower[:-1]
+    return lower
+
+
+def _tool_use(fake_id: str, name: str, input_: dict[str, Any], *, text: str = "") -> LLMTurnResult:
+    content: list[dict[str, Any]] = []
+    if text:
+        content.append({"type": "text", "text": text})
+    content.append({"type": "tool_use", "id": fake_id, "name": name, "input": input_})
+    call = LLMToolCall(id=fake_id, name=name, input=input_)
+    return LLMTurnResult(text=text, tool_calls=[call], stop_reason="tool_use", content=content)
+
+
+def _final_text(text: str) -> LLMTurnResult:
+    return LLMTurnResult(
+        text=text, tool_calls=[], stop_reason="end_turn", content=[{"type": "text", "text": text}]
+    )
+
+
+def _parse_found_list(raw: str) -> list[dict[str, Any]] | None:
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict) and isinstance(parsed.get("result"), list):
+        result: list[dict[str, Any]] = parsed["result"]
+        return result
+    return None
+
+
+def _summary_or_head(raw: str) -> str:
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        parsed = None
+    if isinstance(parsed, dict) and isinstance(parsed.get("summary"), str):
+        summary: str = parsed["summary"]
+        return summary
+    return raw[:200]
+
+
+class FakeLLM:
+    async def stream(
+        self,
+        *,
+        system: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+    ) -> AsyncIterator[LLMEvent]:
+        result = self._respond(messages)
+        for i in range(0, len(result.text), _CHUNK):
+            yield TextDelta(result.text[i : i + _CHUNK])
+        yield Completed(result)
+
+    def _respond(self, messages: list[dict[str, Any]]) -> LLMTurnResult:
+        fake_id = f"fake_{len(messages)}"
+        last = messages[-1]
+        content = last.get("content")
+        if (
+            last.get("role") == "user"
+            and isinstance(content, list)
+            and any(b.get("type") == "tool_result" for b in content)
+        ):
+            return self._respond_to_tool_result(messages, content, fake_id)
+        return self._respond_to_text(content if isinstance(content, str) else "", fake_id)
+
+    def _respond_to_tool_result(
+        self, messages: list[dict[str, Any]], content: list[dict[str, Any]], fake_id: str
+    ) -> LLMTurnResult:
+        prev = messages[-2] if len(messages) >= 2 else {}
+        prev_content = prev.get("content") if prev.get("role") == "assistant" else None
+        shift_text = None
+        if isinstance(prev_content, list):
+            shift_text = next(
+                (
+                    b["text"]
+                    for b in prev_content
+                    if b.get("type") == "text" and b.get("text", "").startswith("[fake] shift=")
+                ),
+                None,
+            )
+        tool_results = [b for b in content if b.get("type") == "tool_result"]
+        first = tool_results[0] if tool_results else {}
+        if shift_text is not None:
+            items = _parse_found_list(first.get("content", ""))
+            if items is not None:
+                shift = int(shift_text.removeprefix("[fake] shift="))
+                ops = [{"op": "move_task", "id": item["id"], "shift_days": shift} for item in items]
+                return _tool_use(fake_id, "apply_operations", {"operations": ops})
+        error_block = next((b for b in tool_results if b.get("is_error")), None)
+        if error_block is not None:
+            return _final_text(f"Не получилось: {error_block.get('content', '')}")
+        return _final_text("Готово. " + _summary_or_head(first.get("content", "")))
+
+    def _respond_to_text(self, text: str, fake_id: str) -> LLMTurnResult:
+        lowered = text.lower()
+
+        m = re.search(
+            r"(?:перенеси|сдвинь) задачу (\d+) на (-?\d+) (?:раб\w* )?д", lowered, re.IGNORECASE
+        )
+        if m:
+            op = {"op": "move_task", "id": int(m.group(1)), "shift_days": int(m.group(2))}
+            return _tool_use(fake_id, "apply_operations", {"operations": [op]})
+
+        m = re.search(
+            r"(?:сдвинь|перенеси) все задачи (\S+?) на (-?\d+) (?:раб\w* )?д",
+            lowered,
+            re.IGNORECASE,
+        )
+        if m:
+            stem = _stem(text[m.start(1) : m.end(1)])
+            shift_text = f"[fake] shift={int(m.group(2))}"
+            return _tool_use(fake_id, "find_tasks", {"assignee": stem}, text=shift_text)
+
+        m = re.search(r"назначь задачу (\d+) на (.+)", lowered, re.IGNORECASE)
+        if m:
+            assignee = text[m.start(2) : m.end(2)].strip().rstrip(".,;:!?")
+            op = {"op": "update_task", "id": int(m.group(1)), "assignee": assignee}
+            return _tool_use(fake_id, "apply_operations", {"operations": [op]})
+
+        m = re.search(
+            r'добавь задачу [«"](.+?)[»"] на (\d+) д\w*(?: после (\d+))?', lowered, re.IGNORECASE
+        )
+        if m:
+            name = text[m.start(1) : m.end(1)]
+            add_op: dict[str, Any] = {"op": "add_task", "name": name, "duration": int(m.group(2))}
+            if m.group(3):
+                add_op["predecessors"] = [{"id": int(m.group(3))}]
+            return _tool_use(fake_id, "apply_operations", {"operations": [add_op]})
+
+        m = re.search(r"удали задачу (\d+)", lowered, re.IGNORECASE)
+        if m:
+            op = {"op": "delete_task", "id": int(m.group(1))}
+            return _tool_use(fake_id, "apply_operations", {"operations": [op]})
+
+        if re.search(r"^отмени", lowered, re.IGNORECASE):
+            return _tool_use(fake_id, "undo", {})
+
+        return _final_text(HELP)

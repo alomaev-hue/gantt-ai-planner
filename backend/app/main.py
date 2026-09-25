@@ -8,7 +8,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.api import routes_plan, routes_session
+from app.agent.llm import make_llm
+from app.agent.loop import Agent
+from app.api import routes_chat, routes_events, routes_plan, routes_session
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import make_engine, make_sessionmaker
@@ -44,6 +46,9 @@ def create_app(
             app.state.mcp = build_mcp(app.state.service, today=today_fn)
             async with PlanToolClient(app.state.mcp) as tool_client:
                 app.state.tool_client = tool_client
+                app.state.agent = Agent(
+                    make_llm(cfg), tool_client, app.state.service, today=today_fn
+                )
                 yield
         finally:
             if engine is not None:
@@ -59,6 +64,8 @@ def create_app(
     install_error_handlers(app)
     app.include_router(routes_session.router)
     app.include_router(routes_plan.router)
+    app.include_router(routes_chat.router)
+    app.include_router(routes_events.router)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
