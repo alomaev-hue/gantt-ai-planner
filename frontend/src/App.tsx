@@ -6,12 +6,17 @@ import { CHANGED_TASK_IDS_KEY } from "@/hooks/useChat";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { Toolbar } from "@/components/Toolbar";
+import { TaskModal } from "@/components/task/TaskModal";
+import { ImportDialog } from "@/components/import/ImportDialog";
 import type { Zoom } from "@/components/gantt/mapping";
 
 function App() {
   const { data, isLoading, isError, error } = usePlan();
-  const [zoom] = useState<Zoom>("day");
+  const [zoom, setZoom] = useState<Zoom>("day");
   const [focusedIds, setFocusedIds] = useState<ReadonlySet<number>>(() => new Set());
+  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // `useChat` (inside `ChatPanel`) writes the ids touched by the latest agent turn to this
   // query key so the Gantt can pulse them without a bespoke prop between the two subtrees.
@@ -31,11 +36,16 @@ function App() {
     [focusedIds, changedTaskIds],
   );
 
+  const openTask = data?.plan.tasks.find((t) => t.id === openTaskId) ?? null;
+
   return (
     <div className="flex h-screen min-h-0 flex-col">
       <header className="flex items-center border-b border-border px-4 py-3">
         <h1 className="text-lg font-semibold">Gantt AI Planner</h1>
       </header>
+      {data && (
+        <Toolbar plan={data} agentBusy={agentBusy} zoom={zoom} onZoom={setZoom} onImport={() => setImportOpen(true)} />
+      )}
       <main className="min-h-0 flex-1">
         {isLoading && <div className="p-4 text-muted-foreground">Загрузка плана…</div>}
         {isError && (
@@ -51,9 +61,7 @@ function App() {
                 zoom={zoom}
                 highlighted={highlighted}
                 readOnly
-                onOpenTask={() => {
-                  /* Phase 2: opens the task edit modal. */
-                }}
+                onOpenTask={(id) => setOpenTaskId(id)}
               />
             }
             right={
@@ -62,6 +70,20 @@ function App() {
           />
         )}
       </main>
+
+      {data && (
+        <TaskModal
+          task={openTask}
+          plan={data.plan}
+          open={openTaskId != null}
+          onOpenChange={(open) => {
+            if (!open) setOpenTaskId(null);
+          }}
+          onNavigate={(id) => setOpenTaskId(id)}
+          disabled={agentBusy}
+        />
+      )}
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }
