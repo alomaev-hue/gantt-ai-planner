@@ -1,0 +1,51 @@
+/*
+ * SVAR renders a task bar as `.wx-bar.wx-<type>` where `<type>` is the raw `taskTypes` id
+ * (confirmed against @svar-ui/react-gantt's own demos: summary -> `wx-bar wx-summary`,
+ * milestone -> `wx-bar wx-milestone`). Our custom types are "task" | "critical" | "changed".
+ */
+:root {
+  --gantt-critical: #e5484d;
+  --gantt-changed: #aa3bff;
+  --gantt-changed-bg: rgba(170, 59, 255, 0.16);
+  --gantt-today: rgba(170, 59, 255, 0.08);
+}
+
+.dark {
+  --gantt-critical: #ff6369;
+  --gantt-changed: #c084fc;
+  --gantt-changed-bg: rgba(192, 132, 252, 0.2);
+  --gantt-today: rgba(192, 132, 252, 0.12);
+}
+
+.wx-bar.wx-critical {
+  background: var(--gantt-critical);
+  border-color: var(--gantt-critical);
+}
+
+.wx-bar.wx-changed {
+  background: var(--gantt-changed);
+  border-color: var(--gantt-changed);
+  animation: gantt-changed-pulse 2s ease-in-out 1;
+}
+
+@keyframes gantt-changed-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--gantt-changed-bg);
+  }
+  50% {
+    box-shadow: 0 0 0 6px var(--gantt-changed-bg);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* highlightTime(date, "day") returns "gantt-today" for the current day column. */
+.gantt-today {
+  background: var(--gantt-today);
+}
+
+/* Phase 1 is read-only: progress is not tracked yet, so hide the drag handle. */
+.wx-progress-marker {
+  display: none;
+}
