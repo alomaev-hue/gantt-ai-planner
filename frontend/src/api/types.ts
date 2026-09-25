@@ -183,13 +183,13 @@ export interface ChatMessage {
   };
 }
 
-// spec §7: chat SSE event stream.
+// spec §7 / backend/app/agent/loop.py: chat SSE event stream.
 export type ChatEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_started"; name: string }
-  | { type: "tool_finished"; name: string; ok: boolean; summary: string }
-  | { type: "plan_changed"; version: number }
-  | { type: "done"; turn_id: string; diff_summary: string }
+  | { type: "tool_finished"; name: string; ok: boolean; summary: string | null }
+  | { type: "plan_changed"; version: number | null }
+  | { type: "done"; turn_id: string; summary: string; changes: Change[] }
   | { type: "error"; code: string; message: string };
 
 // spec §10: unified error envelope `{error: {code, message, details?}}`.
