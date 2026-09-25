@@ -6,9 +6,6 @@ import type { Change, ChatMessage } from "@/api/types";
 import { PLAN_KEY } from "./usePlan";
 
 export const CHAT_HISTORY_KEY = ["chat", "history"];
-// Task ids touched by the most recently completed agent turn — written here so `App` can
-// highlight/pulse the corresponding Gantt bars without `ChatPanel` needing an extra prop.
-export const CHANGED_TASK_IDS_KEY = ["chat", "changedTaskIds"];
 
 // Human labels for the tool-call status line shown while the agent is working.
 const TOOL_LABELS: Record<string, string> = {
@@ -88,7 +85,9 @@ export function useChat(): {
                 ...prev,
                 localMessage("assistant", accumulated, { summary: event.summary, changes }),
               ]);
-              queryClient.setQueryData(CHANGED_TASK_IDS_KEY, changes.map((c) => c.task_id));
+              // The Gantt highlight for these ids comes from `useSessionEvents`' own
+              // `plan_changed` bus event (published for every apply, including this one), not
+              // from here.
               break;
             }
             case "error":

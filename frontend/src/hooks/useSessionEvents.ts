@@ -9,10 +9,27 @@ interface AgentStatusPayload {
   busy?: boolean;
 }
 
+// backend/app/services/plan_service.py `_publish`: {type, version, source, turn_id, changed_task_ids}.
+interface PlanChangedPayload {
+  changed_task_ids?: number[];
+}
+
+// Pure so it's easy to unit test: parses the SSE `plan_changed` event's `data` string and
+// returns the changed task ids, or `[]` for malformed/missing data instead of throwing.
+export function parsePlanChanged(data: string): number[] {
+  try {
+    const payload = JSON.parse(data) as PlanChangedPayload;
+    return Array.isArray(payload.changed_task_ids) ? payload.changed_task_ids : [];
+  } catch {
+    return [];
+  }
+}
+
 // Opens the session-wide live event stream (GET /api/events): `agent_status` toggles the busy
-// flag surfaced here, `plan_changed` invalidates the plan query and notifies the caller (so a
-// second tab of the same session, or a background tool call, refreshes the Gantt too). On a
-// stream error it closes, re-establishes the session, and reconnects after a short delay.
+// flag surfaced here, `plan_changed` invalidates the plan query and reports the ids the change
+// touched (so the Gantt can pulse them — this fires for every source: agent, user, mcp, reset,
+// undo, not just the tab that made the change). On a stream error it closes, re-establishes the
+// session, and reconnects after a short delay.
 export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agentBusy: boolean } {
   const queryClient = useQueryClient();
   const [agentBusy, setAgentBusy] = useState(false);
@@ -36,9 +53,14 @@ export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agen
       }
     };
 
-    const handlePlanChanged = () => {
+    const handlePlanChanged = (event: Event) => {
       void queryClient.invalidateQueries({ queryKey: PLAN_KEY });
-      onPlanChangedRef.current([]);
+      onPlanChangedRef.current(parsePlanChanged((event as MessageEvent<string>).data));
+    };
+
+    const detach = (es: EventSource) => {
+      es.removeEventListener("agent_status", handleAgentStatus);
+      es.removeEventListener("plan_changed", handlePlanChanged);
     };
 
     const connect = () => {
@@ -48,6 +70,7 @@ export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agen
       es.addEventListener("agent_status", handleAgentStatus);
       es.addEventListener("plan_changed", handlePlanChanged);
       es.onerror = () => {
+        detach(es);
         es.close();
         if (stopped) return;
         void ensureSession().catch(() => {
@@ -65,7 +88,10 @@ export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agen
     return () => {
       stopped = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
-      source?.close();
+      if (source) {
+        detach(source);
+        source.close();
+      }
     };
   }, [queryClient]);
 

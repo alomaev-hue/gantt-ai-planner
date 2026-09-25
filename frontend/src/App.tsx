@@ -1,8 +1,6 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { usePlan } from "@/hooks/usePlan";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
-import { CHANGED_TASK_IDS_KEY } from "@/hooks/useChat";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -18,23 +16,12 @@ function App() {
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
-  // `useChat` (inside `ChatPanel`) writes the ids touched by the latest agent turn to this
-  // query key so the Gantt can pulse them without a bespoke prop between the two subtrees.
-  const { data: changedTaskIds = [] } = useQuery<number[]>({
-    queryKey: CHANGED_TASK_IDS_KEY,
-    queryFn: () => [],
-    enabled: false,
-    initialData: [],
-  });
-
+  // Every plan change — from this tab, the agent, another tab, or an import/undo/reset —
+  // arrives here via the session-wide event bus, so this is the single source of highlighted
+  // ids (a click in the chat's diff summary sets it too, via `onFocusTask` below).
   const { agentBusy } = useSessionEvents((ids) => {
     if (ids.length) setFocusedIds(new Set(ids));
   });
-
-  const highlighted = useMemo(
-    () => new Set([...focusedIds, ...changedTaskIds]),
-    [focusedIds, changedTaskIds],
-  );
 
   const openTask = data?.plan.tasks.find((t) => t.id === openTaskId) ?? null;
 
@@ -59,7 +46,7 @@ function App() {
               <GanttView
                 plan={data.plan}
                 zoom={zoom}
-                highlighted={highlighted}
+                highlighted={focusedIds}
                 readOnly
                 onOpenTask={(id) => setOpenTaskId(id)}
               />
