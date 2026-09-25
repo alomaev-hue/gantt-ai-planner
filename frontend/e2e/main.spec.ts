@@ -1,6 +1,10 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
+// frontend/package.json has "type": "module", so __dirname isn't available here — derive it
+// from import.meta.url instead (the brief's snippet assumed CommonJS).
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SAMPLE = path.resolve(__dirname, "../../examples/sample-plan.xlsx");
 
 test("demo → import → chat edit → export", async ({ page }) => {
