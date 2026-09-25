@@ -25,7 +25,9 @@ def test_render_contains_header_rows_and_next_id():
     text = render_plan_table(sp, TODAY)
     assert "Сегодня: 2026-09-25" in text
     assert "Следующий свободный id: " + str(sp.last_id + 1) in text
-    header_parts = ["id", "задача", "исполнитель", "длит", "предш", "начало", "конец", "резерв"]
-    assert all(p in text for p in header_parts)
+    expected_header = (
+        "id | задача | исполнитель | длит | предш | не раньше | начало | конец | резерв | флаги"
+    )
+    assert expected_header in text
     assert text.count("\n") >= len(sp.tasks) + 3
     assert "крит" in text and "перегруз" in text
