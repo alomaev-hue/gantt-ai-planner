@@ -17,6 +17,10 @@ PLANNER_DEPLOY_BIN=/usr/local/bin/planner-deploy
 
 # Intentionally unquoted: this is the only word-splitting step, and it is
 # what turns "exactly one token" into a real argument count check below.
+# `set -f` (noglob) first so a command containing a glob character (e.g. a
+# tag like "sha-*" or "sha-abc[123]") is word-split but never expanded
+# against files in the CWD.
+set -f
 # shellcheck disable=SC2086
 set -- ${SSH_ORIGINAL_COMMAND:-}
 
