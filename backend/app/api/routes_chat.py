@@ -1,6 +1,7 @@
 import json
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -37,8 +38,13 @@ async def chat(
     agent = request.app.state.agent
 
     async def gen() -> AsyncIterator[dict[str, str]]:
-        async for event in agent.run_turn(session_id, body.message.strip()):
-            yield {"event": event["type"], "data": json.dumps(event, ensure_ascii=False)}
+        # aclosing() ensures run_turn() is closed deterministically (its busy flag and
+        # "agent_status: false" publish included) if the client disconnects mid-stream —
+        # a bare `async for ... in agent.run_turn(...): yield` would leave that inner
+        # generator to be closed only whenever it happens to be garbage-collected.
+        async with aclosing(agent.run_turn(session_id, body.message.strip())) as turn:
+            async for event in turn:
+                yield {"event": event["type"], "data": json.dumps(event, ensure_ascii=False)}
 
     return EventSourceResponse(gen(), ping=15, sep="\n")
 

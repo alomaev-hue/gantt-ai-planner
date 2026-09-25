@@ -23,9 +23,14 @@ async def test_move_rule():
 
 async def test_bulk_move_two_steps():
     first = [{"role": "user", "content": "Сдвинь все задачи Дмитрия на 3 дня"}]
-    _, r1 = await run(first)
+    deltas1, r1 = await run(first)
     assert r1.tool_calls[0].name == "find_tasks"
     assert "дмитри" in r1.tool_calls[0].input["assignee"]
+    # The pending shift must travel out-of-band (in the tool_use id), never as text that
+    # would be streamed to the client or persisted as chat content.
+    assert "[fake]" not in deltas1
+    assert not any(b.get("type") == "text" for b in r1.content)
+    assert r1.tool_calls[0].id.startswith("fake_shift_3_")
     found = json.dumps({"result": [{"id": 11}, {"id": 12}]})
     msgs = [
         *first,
@@ -37,9 +42,11 @@ async def test_bulk_move_two_steps():
             ],
         },
     ]
-    _, r2 = await run(msgs)
+    deltas2, r2 = await run(msgs)
     ops = r2.tool_calls[0].input["operations"]
     assert [o["id"] for o in ops] == [11, 12] and all(o["shift_days"] == 3 for o in ops)
+    assert "[fake]" not in deltas2
+    assert not any(b.get("type") == "text" and "[fake]" in b.get("text", "") for b in r2.content)
 
 
 async def test_final_text_after_tool_result_and_help():

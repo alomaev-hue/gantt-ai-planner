@@ -1,7 +1,7 @@
 import asyncio
 import uuid
-from collections.abc import AsyncIterator, Callable
-from contextlib import suppress
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import aclosing, suppress
 from datetime import date
 from typing import Any
 
@@ -43,7 +43,7 @@ class Agent:
 
     async def run_turn(
         self, session_id: uuid.UUID, user_text: str
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         service = self._service
         turn_id = uuid.uuid4()
         async with service.locks.agent_turn(session_id):
@@ -58,10 +58,11 @@ class Agent:
                 text_parts: list[str] = []
                 failure: dict[str, Any] | None = None
                 try:
-                    async for event in self._bounded(
-                        session_id, turn_id, start, history, text_parts
-                    ):
-                        yield event
+                    async with aclosing(
+                        self._bounded(session_id, turn_id, start, history, text_parts)
+                    ) as bounded:
+                        async for event in bounded:
+                            yield event
                 except LLMError as exc:
                     failure = {"type": "error", "code": exc.code, "message": exc.message}
                 except TooManySteps:
@@ -88,9 +89,17 @@ class Agent:
                     "summary": summarize_changes(changes),
                     "changes": [c.model_dump() for c in changes[:200]],
                 }
+                partial_text = "".join(text_parts).strip()
                 if failure:
                     meta["error"] = failure["code"]
-                text = "".join(text_parts).strip() or (failure["message"] if failure else "Готово.")
+                    if partial_text:
+                        # Keep the partial stream for diagnostics, but never persist it as
+                        # the chat bubble — the user must see the actual failure reason,
+                        # not a sentence truncated mid-word by the error.
+                        meta["partial_text"] = partial_text
+                    text = failure["message"]
+                else:
+                    text = partial_text or "Готово."
                 async with service.sessionmaker() as db, db.begin():
                     await repo.add_chat_message(
                         db,
@@ -116,7 +125,7 @@ class Agent:
         start: PlanState,
         history: list[ChatMessageRow],
         text_parts: list[str],
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Runs `_loop` in a background task and forwards its events, bounding the whole
         turn to `self._timeout` seconds via a wall-clock deadline.
 

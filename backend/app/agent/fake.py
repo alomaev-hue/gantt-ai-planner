@@ -28,6 +28,27 @@ def _stem(word: str) -> str:
     return lower
 
 
+_SHIFT_ID_PREFIX = "fake_shift_"
+
+
+def _shift_tool_id(shift: int, fake_id: str) -> str:
+    """Carries a pending bulk-move's day shift out-of-band, in the tool_use id itself,
+    instead of a synthetic text block (which would otherwise be streamed to the client
+    and persisted as chat content — see the find_tasks step in `_respond_to_text`)."""
+    return f"{_SHIFT_ID_PREFIX}{shift}_{fake_id}"
+
+
+def _shift_from_id(tool_use_id: str) -> int | None:
+    if not tool_use_id.startswith(_SHIFT_ID_PREFIX):
+        return None
+    rest = tool_use_id.removeprefix(_SHIFT_ID_PREFIX)
+    shift_str = rest.split("_", 1)[0]
+    try:
+        return int(shift_str)
+    except ValueError:
+        return None
+
+
 def _tool_use(fake_id: str, name: str, input_: dict[str, Any], *, text: str = "") -> LLMTurnResult:
     content: list[dict[str, Any]] = []
     if text:
@@ -97,22 +118,21 @@ class FakeLLM:
     ) -> LLMTurnResult:
         prev = messages[-2] if len(messages) >= 2 else {}
         prev_content = prev.get("content") if prev.get("role") == "assistant" else None
-        shift_text = None
+        shift = None
         if isinstance(prev_content, list):
-            shift_text = next(
+            shift = next(
                 (
-                    b["text"]
+                    _shift_from_id(b["id"])
                     for b in prev_content
-                    if b.get("type") == "text" and b.get("text", "").startswith("[fake] shift=")
+                    if b.get("type") == "tool_use" and _shift_from_id(b.get("id", "")) is not None
                 ),
                 None,
             )
         tool_results = [b for b in content if b.get("type") == "tool_result"]
         first = tool_results[0] if tool_results else {}
-        if shift_text is not None:
+        if shift is not None:
             items = _parse_found_list(first.get("content", ""))
             if items is not None:
-                shift = int(shift_text.removeprefix("[fake] shift="))
                 ops = [{"op": "move_task", "id": item["id"], "shift_days": shift} for item in items]
                 return _tool_use(fake_id, "apply_operations", {"operations": ops})
         error_block = next((b for b in tool_results if b.get("is_error")), None)
@@ -137,8 +157,8 @@ class FakeLLM:
         )
         if m:
             stem = _stem(text[m.start(1) : m.end(1)])
-            shift_text = f"[fake] shift={int(m.group(2))}"
-            return _tool_use(fake_id, "find_tasks", {"assignee": stem}, text=shift_text)
+            shift_id = _shift_tool_id(int(m.group(2)), fake_id)
+            return _tool_use(shift_id, "find_tasks", {"assignee": stem})
 
         m = re.search(r"назначь задачу (\d+) на (.+)", lowered, re.IGNORECASE)
         if m:
