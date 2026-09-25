@@ -25,6 +25,7 @@ async def require_session(request: Request) -> uuid.UUID:
     session_id = await get_service(request).resolve_session(token)
     if session_id is None:
         raise NoSession()
+    request.state.session_id = session_id  # read by AccessLogMiddleware for sid=... logging
     return session_id
 
 

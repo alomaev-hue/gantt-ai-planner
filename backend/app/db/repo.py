@@ -151,3 +151,10 @@ async def count_user_messages_since(
 async def delete_expired_sessions(db: AsyncSession, older_than: datetime) -> int:
     result = await db.execute(delete(SessionRow).where(SessionRow.last_seen_at < older_than))
     return int(result.rowcount or 0)  # type: ignore[attr-defined]  # CursorResult at runtime
+
+
+async def delete_expired_session_ids(db: AsyncSession, older_than: datetime) -> list[uuid.UUID]:
+    result = await db.execute(
+        delete(SessionRow).where(SessionRow.last_seen_at < older_than).returning(SessionRow.id)
+    )
+    return [row[0] for row in result.all()]

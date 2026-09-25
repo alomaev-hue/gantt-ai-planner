@@ -149,3 +149,18 @@ async def test_versions_are_pruned(sessionmaker):
     await service.undo(sid)
     with pytest.raises(NothingToUndo):
         await service.undo(sid)
+
+
+async def test_delete_session_forgets_lock_and_bus_entries(service):
+    _, sid = await service.create_session()
+    service.bus.subscribe(sid)
+    service.locks.lock(sid)
+    assert sid in service.locks._locks
+    assert sid in service.bus._subs
+
+    await service.delete_session(sid)
+
+    assert sid not in service.locks._locks
+    assert sid not in service.bus._subs
+    async with service.sessionmaker() as db:
+        assert await repo.get_session(db, sid) is None

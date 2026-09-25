@@ -1,6 +1,8 @@
+import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
-from datetime import date
+from contextlib import asynccontextmanager, suppress
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,11 +16,40 @@ from app.api import routes_chat, routes_events, routes_plan, routes_session
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import make_engine, make_sessionmaker
+from app.logging_setup import AccessLogMiddleware
+from app.logging_setup import configure as configure_logging
 from app.mcp_server.client import PlanToolClient
 from app.mcp_server.server import build_mcp
+from app.services.cleanup import run_cleanup_cycle
 from app.services.events import EventBus
 from app.services.locks import SessionLocks
 from app.services.plan_service import PlanService
+
+logger = logging.getLogger("app.cleanup")
+
+CLEANUP_INTERVAL_SECONDS = 3600
+CLEANUP_FIRST_RUN_DELAY_SECONDS = 30
+
+
+async def _cleanup_loop(app: FastAPI, cfg: Settings) -> None:
+    """Purge expired sessions hourly; first run shortly after startup.
+
+    Failures are logged and swallowed so a transient DB hiccup never crashes
+    the loop or the app (no crash loop) — the next hourly tick tries again.
+    """
+    await asyncio.sleep(CLEANUP_FIRST_RUN_DELAY_SECONDS)
+    while True:
+        try:
+            await run_cleanup_cycle(
+                app.state.sessionmaker,
+                app.state.service.locks,
+                app.state.service.bus,
+                ttl_days=cfg.session_ttl_days,
+                now=datetime.now(UTC),
+            )
+        except Exception:
+            logger.exception("session cleanup cycle failed")
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
 
 def create_app(
@@ -42,6 +73,7 @@ def create_app(
         app.state.service = PlanService(
             sm, EventBus(), SessionLocks(), max_versions=cfg.max_versions, today=today_fn
         )
+        cleanup_task = asyncio.create_task(_cleanup_loop(app, cfg))
         try:
             app.state.mcp = build_mcp(app.state.service, today=today_fn)
             async with PlanToolClient(app.state.mcp) as tool_client:
@@ -51,8 +83,13 @@ def create_app(
                 )
                 yield
         finally:
+            cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
             if engine is not None:
                 await engine.dispose()
+
+    configure_logging(cfg.log_level)
 
     app = FastAPI(
         title="Gantt AI Planner",
@@ -61,6 +98,7 @@ def create_app(
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
+    app.add_middleware(AccessLogMiddleware)
     install_error_handlers(app)
     app.include_router(routes_session.router)
     app.include_router(routes_plan.router)

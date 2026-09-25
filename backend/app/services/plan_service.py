@@ -111,6 +111,8 @@ class PlanService:
     async def delete_session(self, session_id: uuid.UUID) -> None:
         async with self.sessionmaker() as db, db.begin():
             await repo.delete_session(db, session_id)
+        self.locks.forget(session_id)
+        self.bus.forget(session_id)
 
     async def get_state(self, session_id: uuid.UUID) -> PlanState:
         async with self.sessionmaker() as db:

@@ -41,3 +41,20 @@ class SessionLocks:
             return True
         except TimeoutError:
             return False
+
+    def forget(self, session_id: uuid.UUID) -> None:
+        """Drop the lock/idle entries for a deleted session, unless still in use.
+
+        Safe no-op when the session was never seen, is currently locked
+        (``lock()``'s asyncio.Lock held), or busy (an ``agent_turn`` in
+        progress) — dropping entries out from under an in-flight operation
+        would let a concurrent caller create a fresh, unsynchronized lock.
+        """
+        lock = self._locks.get(session_id)
+        if lock is not None and lock.locked():
+            return
+        idle = self._idle.get(session_id)
+        if idle is not None and not idle.is_set():
+            return
+        self._locks.pop(session_id, None)
+        self._idle.pop(session_id, None)

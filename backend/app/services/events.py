@@ -28,3 +28,7 @@ class EventBus:
         for queue in list(self._subs.get(session_id, ())):
             with suppress(asyncio.QueueFull):  # slow client; it refetches the plan on reconnect
                 queue.put_nowait(event)
+
+    def forget(self, session_id: uuid.UUID) -> None:
+        """Drop the subscriber set for a deleted session so it doesn't linger forever."""
+        self._subs.pop(session_id, None)
