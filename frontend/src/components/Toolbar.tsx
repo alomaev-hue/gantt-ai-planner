@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, MoreVertical, Redo2, RotateCcw, Undo2, Upload } from "lucide-react";
+import { Download, Link2, MoreVertical, Redo2, RotateCcw, Undo2, Upload } from "lucide-react";
 import { api, ApiError, EXPORT_URL } from "@/api/client";
 import type { PlanResponse } from "@/api/types";
 import { PLAN_KEY } from "@/hooks/usePlan";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { McpConnectDialog } from "@/components/McpConnectDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Zoom } from "@/components/gantt/mapping";
 
@@ -29,6 +30,7 @@ export function Toolbar({
   const queryClient = useQueryClient();
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
   const runPlanAction = async (action: () => Promise<PlanResponse>, errorMessage: string) => {
@@ -113,6 +115,14 @@ export function Toolbar({
 
         <button
           type="button"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+          onClick={() => setMcpOpen(true)}
+        >
+          <Link2 className="h-4 w-4" /> Подключить MCP
+        </button>
+
+        <button
+          type="button"
           className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-40"
           disabled={busy}
           onClick={() => setResetOpen(true)}
@@ -140,6 +150,7 @@ export function Toolbar({
         confirmLabel="Сбросить"
         onConfirm={() => void runPlanAction(api.reset, "Не удалось сбросить план")}
       />
+      <McpConnectDialog open={mcpOpen} onOpenChange={setMcpOpen} />
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

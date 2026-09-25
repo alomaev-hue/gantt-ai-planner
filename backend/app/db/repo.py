@@ -5,7 +5,7 @@ from typing import Any, NamedTuple
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ChatMessageRow, PlanVersionRow, SessionRow
+from app.db.models import ChatMessageRow, McpTokenRow, PlanVersionRow, SessionRow
 
 
 class VersionMeta(NamedTuple):
@@ -146,6 +146,46 @@ async def count_user_messages_since(
     if session_id is not None:
         stmt = stmt.where(ChatMessageRow.session_id == session_id)
     return int(await db.scalar(stmt) or 0)
+
+
+async def create_mcp_token(
+    db: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    token_hash: bytes,
+    prefix: str,
+    expires_at: datetime,
+) -> McpTokenRow:
+    row = McpTokenRow(
+        session_id=session_id, token_hash=token_hash, prefix=prefix, expires_at=expires_at
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def get_active_mcp_token(
+    db: AsyncSession, token_hash: bytes, now: datetime
+) -> McpTokenRow | None:
+    return await db.scalar(
+        select(McpTokenRow).where(
+            McpTokenRow.token_hash == token_hash,
+            McpTokenRow.revoked_at.is_(None),
+            McpTokenRow.expires_at > now,
+        )
+    )
+
+
+async def revoke_mcp_tokens(db: AsyncSession, session_id: uuid.UUID, now: datetime) -> None:
+    await db.execute(
+        update(McpTokenRow)
+        .where(McpTokenRow.session_id == session_id, McpTokenRow.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+
+
+async def touch_mcp_token(db: AsyncSession, token_id: uuid.UUID, now: datetime) -> None:
+    await db.execute(update(McpTokenRow).where(McpTokenRow.id == token_id).values(last_used_at=now))
 
 
 async def delete_expired_sessions(db: AsyncSession, older_than: datetime) -> int:

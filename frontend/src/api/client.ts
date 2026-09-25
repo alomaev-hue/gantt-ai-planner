@@ -1,4 +1,12 @@
-import type { ApplyResponse, ChatMessage, ImportFailure, ImportSuccess, Operation, PlanResponse } from "./types";
+import type {
+  ApplyResponse,
+  ChatMessage,
+  ImportFailure,
+  ImportSuccess,
+  McpTokenResponse,
+  Operation,
+  PlanResponse,
+} from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -55,6 +63,8 @@ export const api = {
   reset: () => post<PlanResponse>("/api/plan/reset"),
   chatHistory: () => request<ChatMessage[]>("/api/chat/history"),
   deleteSession: () => request<void>("/api/session", { method: "DELETE" }),
+  createMcpToken: () => post<McpTokenResponse>("/api/mcp-token"),
+  revokeMcpToken: () => request<void>("/api/mcp-token", { method: "DELETE" }),
   async importPlan(file: File, projectStart: string): Promise<ImportSuccess | ImportFailure> {
     const form = new FormData();
     form.append("file", file);

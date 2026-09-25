@@ -1,0 +1,54 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { api } from "@/api/client";
+import { McpConnectDialog } from "./McpConnectDialog";
+
+vi.mock("@/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client");
+  return { ...actual, api: { createMcpToken: vi.fn(), revokeMcpToken: vi.fn() } };
+});
+
+const sample = {
+  token: "mcp_secret123",
+  expires_at: "2026-10-02T00:00:00Z",
+  url: "http://localhost:8000/mcp",
+  claude_code_command:
+    'claude mcp add --transport http planner http://localhost:8000/mcp --header "Authorization: Bearer mcp_secret123"',
+  claude_desktop_config: {
+    mcpServers: {
+      planner: { url: "http://localhost:8000/mcp", headers: { Authorization: "Bearer mcp_secret123" } },
+    },
+  },
+};
+
+beforeEach(() => {
+  vi.mocked(api.createMcpToken).mockResolvedValue(sample);
+  vi.mocked(api.revokeMcpToken).mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+});
+
+test("issues a token, shows it once with the warning, and copies it", async () => {
+  render(<McpConnectDialog open onOpenChange={() => {}} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Выпустить токен" }));
+  await waitFor(() => expect(api.createMcpToken).toHaveBeenCalled());
+
+  expect(await screen.findByText("Токен даёт доступ к вашему плану. Не публикуйте его.")).toBeInTheDocument();
+  expect(screen.getByDisplayValue(sample.token)).toBeInTheDocument();
+  expect(screen.getByDisplayValue(sample.claude_code_command)).toBeInTheDocument();
+
+  const copyButtons = screen.getAllByRole("button", { name: "Копировать" });
+  fireEvent.click(copyButtons[0]);
+  await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(sample.token));
+});
+
+test("revoking clears the shown token", async () => {
+  render(<McpConnectDialog open onOpenChange={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Выпустить токен" }));
+  await screen.findByDisplayValue(sample.token);
+
+  fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
+  await waitFor(() => expect(api.revokeMcpToken).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Выпустить токен" })).toBeInTheDocument(),
+  );
+});

@@ -194,6 +194,18 @@ export type ChatEvent =
   | { type: "done"; turn_id: string; summary: string; changes: Change[] }
   | { type: "error"; code: string; message: string };
 
+// spec §8 / backend/app/api/schemas.py McpTokenResponse: POST /api/mcp-token.
+// `token` is shown once; only its sha256 + prefix are stored server-side.
+export interface McpTokenResponse {
+  token: string;
+  expires_at: string;
+  url: string;
+  claude_code_command: string;
+  claude_desktop_config: {
+    mcpServers: Record<string, { url: string; headers: Record<string, string> }>;
+  };
+}
+
 // spec §10: unified error envelope `{error: {code, message, details?}}`.
 export interface ApiErrorBody {
   error: {

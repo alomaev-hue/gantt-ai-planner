@@ -1,4 +1,5 @@
-from typing import Literal
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -38,6 +39,14 @@ class ImportFailure(BaseModel):
     ok: Literal[False]
     errors: list[ImportIssue]
     warnings: list[ImportIssue]
+
+
+class McpTokenResponse(BaseModel):
+    token: str
+    expires_at: datetime
+    url: str
+    claude_code_command: str
+    claude_desktop_config: dict[str, Any]
 
 
 def to_plan_response(state: PlanState, busy: bool) -> PlanResponse:
