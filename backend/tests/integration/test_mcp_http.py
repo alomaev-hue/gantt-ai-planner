@@ -137,3 +137,27 @@ async def test_cross_origin_request_is_rejected_before_reaching_mcp(app, session
 async def test_mcp_token_requires_a_session(client):
     r = await client.post("/api/mcp-token")
     assert r.status_code == 401
+
+
+async def test_bare_post_mcp_without_trailing_slash_returns_200_not_307(app, session_client):
+    """McpOriginGate rewrites a bare `/mcp` to `/mcp/` before fastmcp's router sees it, so a
+    client that (correctly, per the MCP HTTP spec) POSTs to `/mcp` without a trailing slash
+    never hits fastmcp's own 307 redirect — which MCP HTTP clients don't reliably follow.
+    """
+    token = await _issue_token(session_client)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver", follow_redirects=False
+    ) as raw:
+        r = await raw.post(
+            "/mcp",
+            headers={
+                "Origin": "http://testserver",
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json, text/event-stream",
+                "Content-Type": "application/json",
+            },
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+        )
+    assert r.status_code == 200
+    assert r.json()["result"]["tools"]
