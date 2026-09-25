@@ -109,15 +109,33 @@ class AnthropicLLM:
         )
 
 
-def make_llm(settings: Settings) -> LLM:
+def resolve_llm_mode(settings: Settings) -> str:
+    """Which LLM `make_llm` will actually construct: "anthropic" or "fake".
+
+    Shared with `GET /api/meta` so the UI can show a "Демо-режим без LLM"
+    badge without duplicating the blank-key check.
+    """
     key = settings.anthropic_api_key
     key_value = key.get_secret_value() if key is not None else ""
     if settings.llm_provider == "anthropic" and key_value.strip():
-        return AnthropicLLM(key_value, settings.llm_model, settings.llm_max_tokens)
+        return "anthropic"
+    return "fake"
+
+
+def make_llm(settings: Settings) -> LLM:
+    if resolve_llm_mode(settings) == "anthropic":
+        assert settings.anthropic_api_key is not None  # guaranteed by resolve_llm_mode
+        return AnthropicLLM(
+            settings.anthropic_api_key.get_secret_value(),
+            settings.llm_model,
+            settings.llm_max_tokens,
+        )
     if settings.llm_provider == "anthropic":
         # The production secret file is created empty by bootstrap.sh until the owner
-        # fills it in — never log the key value itself, just that it's missing.
-        logger.warning("ANTHROPIC_API_KEY не задан, используется демо-режим без LLM")
+        # fills it in. This is a misconfigured production deployment silently running a
+        # demo mode, not a routine condition — log it as an error (never the key value
+        # itself), not just a warning, so it's not lost in normal startup noise.
+        logger.error("ANTHROPIC_API_KEY не задан, используется демо-режим без LLM")
 
     from app.agent.fake import FakeLLM
 

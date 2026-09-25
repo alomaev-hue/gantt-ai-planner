@@ -15,7 +15,14 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.agent.llm import make_llm
 from app.agent.loop import Agent
-from app.api import routes_chat, routes_events, routes_mcp_token, routes_plan, routes_session
+from app.api import (
+    routes_chat,
+    routes_events,
+    routes_mcp_token,
+    routes_meta,
+    routes_plan,
+    routes_session,
+)
 from app.api.errors import install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import make_engine, make_sessionmaker
@@ -152,6 +159,7 @@ def create_app(
     app.include_router(routes_chat.router)
     app.include_router(routes_events.router)
     app.include_router(routes_mcp_token.router)
+    app.include_router(routes_meta.router)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:
