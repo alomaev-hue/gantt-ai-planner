@@ -66,8 +66,8 @@ export const api = {
       res = await send();
     }
     if (res.ok || res.status === 422) {
-      const body = await res.json();
-      if ("ok" in body) return body;
+      const body = await res.clone().json().catch(() => null);
+      if (body && "ok" in body) return body;
     }
     throw await toError(res);
   },

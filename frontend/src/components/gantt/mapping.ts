@@ -28,6 +28,19 @@ export function toSvarLinks(plan: ScheduledPlan): SvarLink[] {
   return plan.dependencies.map((d, i) => ({ id: i + 1, source: d.predecessor_id, target: d.successor_id, type: "e2s" }));
 }
 
+// SVAR (@svar-ui/lib-dom `locate`) marks both grid rows and gantt bars with a `data-id`
+// attribute holding the task id. We use it to open the task modal only on a genuine pointer
+// click (bubbling up from the clicked row/bar to our own container's onClick), instead of
+// SVAR's `select-task` API event, which also fires on keyboard grid navigation.
+export function closestTaskId(target: EventTarget | null): number | null {
+  if (!(target instanceof Element)) return null;
+  const el = target.closest("[data-id]");
+  const raw = el?.getAttribute("data-id");
+  if (!raw) return null;
+  const id = Number(raw);
+  return Number.isFinite(id) ? id : null;
+}
+
 // SVAR IScaleConfig = {unit, step, format?, css?} (@svar-ui/gantt-store). `format` strings use
 // SVAR's own token syntax (%F full month, %M short month, %j day-of-month, %Y year); the
 // RuLocale wrapper supplies the Russian month/day words those tokens render.

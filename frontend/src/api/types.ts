@@ -65,10 +65,11 @@ export interface Change {
 }
 
 // POST /api/plan/operations (spec §10): "возвращает план и diff" — PlanResponse plus the
-// per-batch result fields mirroring backend ApplyResult (app/domain/operations.py).
+// per-batch result fields mirroring backend ApplyResponse (backend/app/api/schemas.py).
 export interface ApplyResponse extends PlanResponse {
   changes: Change[];
   warnings: string[];
+  summary: string;
   created_task_ids: number[];
 }
 
@@ -78,10 +79,11 @@ export interface ImportIssue {
   message: string;
 }
 
+// backend/app/api/schemas.py: ImportSuccess — `plan` is the full nested PlanResponse (version
+// lives on it, not at the top level).
 export interface ImportSuccess {
   ok: true;
-  plan: ScheduledPlan;
-  version: number;
+  plan: PlanResponse;
   warnings: ImportIssue[];
 }
 

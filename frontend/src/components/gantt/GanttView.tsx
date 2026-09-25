@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Gantt, Willow, type IApi } from "@svar-ui/react-gantt";
 import "@svar-ui/react-gantt/all.css";
 import "./gantt.css";
-import { ZOOM_PRESETS, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
+import { ZOOM_PRESETS, closestTaskId, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
 import { RuLocale } from "./locale";
 import type { ScheduledPlan } from "@/api/types";
 import { formatRu, addDays } from "@/lib/dates";
@@ -43,9 +43,14 @@ export function GanttView(props: {
   );
 
   const init = useCallback((api: IApi) => {
-    api.intercept("show-editor", () => false);
-    api.on("select-task", ({ id }) => {
+    // `select-task` also fires on keyboard grid navigation, so opening the task modal from it
+    // would pop the modal while the user is just arrowing through rows. Instead, a real pointer
+    // click is handled by the container's own onClick below (via `closestTaskId`); double-click
+    // still routes through `show-editor`, which we intercept to open our modal instead of
+    // SVAR's built-in editor.
+    api.intercept("show-editor", ({ id }: { id: number | string | null }) => {
       if (id != null) handlers.current.onOpenTask(Number(id));
+      return false;
     });
     // Phase 2 wires drag/resize/link editing here; Phase 1 is read-only end to end.
     api.intercept("update-task", () => false);
@@ -54,21 +59,29 @@ export function GanttView(props: {
   }, []);
 
   return (
-    <RuLocale>
-      <Willow>
-        <Gantt
-          init={init}
-          tasks={tasks}
-          links={links}
-          columns={columns}
-          taskTypes={TASK_TYPES}
-          readonly={props.readOnly}
-          {...ZOOM_PRESETS[props.zoom]}
-          highlightTime={(d: Date, unit: string) =>
-            unit === "day" && d.toDateString() === new Date().toDateString() ? "gantt-today" : ""
-          }
-        />
-      </Willow>
-    </RuLocale>
+    <div
+      className="h-full min-h-0"
+      onClick={(e) => {
+        const id = closestTaskId(e.target);
+        if (id != null) handlers.current.onOpenTask(id);
+      }}
+    >
+      <RuLocale>
+        <Willow>
+          <Gantt
+            init={init}
+            tasks={tasks}
+            links={links}
+            columns={columns}
+            taskTypes={TASK_TYPES}
+            readonly={props.readOnly}
+            {...ZOOM_PRESETS[props.zoom]}
+            highlightTime={(d: Date, unit: string) =>
+              unit === "day" && d.toDateString() === new Date().toDateString() ? "gantt-today" : ""
+            }
+          />
+        </Willow>
+      </RuLocale>
+    </div>
   );
 }

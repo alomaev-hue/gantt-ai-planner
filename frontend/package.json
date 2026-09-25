@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@svar-ui/react-core": "^2.6.1",
-    "@svar-ui/react-gantt": "^2.7.3",
+    "@svar-ui/react-gantt": "2.7.3",
     "@tanstack/react-query": "^5.103.2",
     "clsx": "^2.1.1",
     "lucide-react": "^1.48.0",

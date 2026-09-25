@@ -1,4 +1,4 @@
-import { toSvarLinks, toSvarTasks } from "./mapping";
+import { closestTaskId, toSvarLinks, toSvarTasks } from "./mapping";
 import type { ScheduledPlan } from "@/api/types";
 
 const plan: ScheduledPlan = {
@@ -23,4 +23,19 @@ test("tasks map with exclusive end and types", () => {
 
 test("links are finish-to-start", () => {
   expect(toSvarLinks(plan)).toEqual([{ id: 1, source: 1, target: 2, type: "e2s" }]);
+});
+
+test("closestTaskId reads data-id off the clicked element or an ancestor", () => {
+  const row = document.createElement("div");
+  row.setAttribute("data-id", "7");
+  const label = document.createElement("span");
+  row.appendChild(label);
+  expect(closestTaskId(label)).toBe(7);
+  expect(closestTaskId(row)).toBe(7);
+});
+
+test("closestTaskId returns null without a data-id ancestor or a non-element target", () => {
+  const outside = document.createElement("span");
+  expect(closestTaskId(outside)).toBeNull();
+  expect(closestTaskId(null)).toBeNull();
 });
