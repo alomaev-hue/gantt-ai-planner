@@ -9,7 +9,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.domain.calendar import next_workday
 from app.domain.errors import CycleError
@@ -85,6 +85,10 @@ def _fail(errors: list[ImportIssue], warnings: list[ImportIssue]) -> ImportResul
     return ImportResult(ok=False, plan=None, errors=errors, warnings=warnings)
 
 
+def _short(exc: ValidationError) -> str:
+    return "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
+
+
 def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
     errors: list[ImportIssue] = []
     warnings: list[ImportIssue] = []
@@ -154,7 +158,10 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
     if not raw_tasks and not errors:
         return _fail([ImportIssue(row=None, message="В файле нет задач")], warnings)
     if len(raw_tasks) > MAX_TASKS:
-        return _fail([ImportIssue(row=None, message=f"Больше {MAX_TASKS} задач в файле")], warnings)
+        return _fail(
+            [*errors, ImportIssue(row=None, message=f"Больше {MAX_TASKS} задач в файле")],
+            warnings,
+        )
 
     # ids: from «№» column if present, else 1..n
     use_numbers = "number" in columns
@@ -203,28 +210,37 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
                     ImportIssue(row=row, message="Задача не может зависеть от самой себя")
                 )
                 continue
+            if lag > 365:
+                errors.append(ImportIssue(row=row, message=f"Лаг больше 365 дней в «{token}»"))
+                continue
             deps[(ref, succ)] = max(lag, deps.get((ref, succ), 0))
 
     if errors:
         return _fail(errors, warnings)
 
-    plan = Plan(
-        project_start=next_workday(project_start),
-        tasks=[
-            Task(
-                id=ids[it["row"]],
-                name=it["name"],
-                description=it["description"],
-                assignee=it["assignee"] or None,
-                duration=it["duration"],
-                constraint_start=it["constraint"],
-            )
-            for it in raw_tasks
-        ],
-        dependencies=[
-            Dependency(predecessor_id=p, successor_id=s, lag=lag) for (p, s), lag in deps.items()
-        ],
-    )
+    try:
+        plan = Plan(
+            project_start=next_workday(project_start),
+            tasks=[
+                Task(
+                    id=ids[it["row"]],
+                    name=it["name"],
+                    description=it["description"],
+                    assignee=it["assignee"] or None,
+                    duration=it["duration"],
+                    constraint_start=it["constraint"],
+                )
+                for it in raw_tasks
+            ],
+            dependencies=[
+                Dependency(predecessor_id=p, successor_id=s, lag=lag)
+                for (p, s), lag in deps.items()
+            ],
+        )
+    except ValidationError as exc:
+        return _fail(
+            [ImportIssue(row=None, message=f"Некорректные данные: {_short(exc)}")], warnings
+        )
     try:
         topological_order(plan)
     except CycleError as exc:

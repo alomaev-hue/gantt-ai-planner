@@ -165,3 +165,19 @@ def test_duplicate_numbers_and_too_many_tasks():
     assert any("повторяется" in e.message for e in parse_plan_xlsx(dup, MON).errors)
     many = xlsx([HEADER] + [[f"T{i}", "", None, 1, None] for i in range(501)])
     assert any("500" in e.message for e in parse_plan_xlsx(many, MON).errors)
+
+
+def test_excessive_lag_is_reported_not_a_crash():
+    data = xlsx([HEADER, ["A", "", None, 1, None], ["B", "", None, 1, "1+9999"]])
+    res = parse_plan_xlsx(data, MON)
+    assert not res.ok and res.plan is None
+    errs = [e for e in res.errors if e.row == 3]
+    assert errs and "365" in errs[0].message
+
+
+def test_too_many_tasks_keeps_previously_collected_errors():
+    rows = [HEADER, ["", "", None, 1, None]] + [[f"T{i}", "", None, 1, None] for i in range(501)]
+    res = parse_plan_xlsx(xlsx(rows), MON)
+    assert not res.ok
+    assert any("500" in e.message for e in res.errors)
+    assert any(e.row == 2 for e in res.errors)
