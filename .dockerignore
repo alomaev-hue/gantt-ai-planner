@@ -1,0 +1,12 @@
+**/node_modules
+**/.venv
+frontend/dist
+.git
+.superpowers
+docs
+**/__pycache__
+**/*.pyc
+frontend/test-results
+frontend/playwright-report
+.env
+secrets

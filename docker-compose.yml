@@ -6,12 +6,34 @@ services:
       POSTGRES_PASSWORD: planner
       POSTGRES_DB: planner
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U planner"]
       interval: 3s
       retries: 20
+  migrate:
+    profiles: ["full"]
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: &appenv
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: planner
+      DB_USER: planner
+      DB_PASSWORD: planner
+      PUBLIC_ORIGIN: http://localhost:8000
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    depends_on:
+      db: {condition: service_healthy}
+  app:
+    profiles: ["full"]
+    build: .
+    environment: *appenv
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
 volumes:
   pgdata:
