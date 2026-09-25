@@ -3,6 +3,8 @@ name = "gantt-ai-planner"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "defusedxml>=0.7.1",
+    "openpyxl>=3.1.5",
     "pydantic>=2.13.5",
 ]
 
@@ -42,4 +44,5 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.16.9",
+    "types-openpyxl>=3.1.5.20260827",
 ]
