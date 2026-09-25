@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -7,6 +8,8 @@ import anthropic
 from app.config import Settings
 
 UNAVAILABLE = "LLM временно недоступна, попробуйте позже"
+
+logger = logging.getLogger("app.agent.llm")
 
 
 @dataclass(frozen=True)
@@ -107,12 +110,15 @@ class AnthropicLLM:
 
 
 def make_llm(settings: Settings) -> LLM:
-    if settings.llm_provider == "anthropic" and settings.anthropic_api_key is not None:
-        return AnthropicLLM(
-            settings.anthropic_api_key.get_secret_value(),
-            settings.llm_model,
-            settings.llm_max_tokens,
-        )
+    key = settings.anthropic_api_key
+    key_value = key.get_secret_value() if key is not None else ""
+    if settings.llm_provider == "anthropic" and key_value.strip():
+        return AnthropicLLM(key_value, settings.llm_model, settings.llm_max_tokens)
+    if settings.llm_provider == "anthropic":
+        # The production secret file is created empty by bootstrap.sh until the owner
+        # fills it in — never log the key value itself, just that it's missing.
+        logger.warning("ANTHROPIC_API_KEY не задан, используется демо-режим без LLM")
+
     from app.agent.fake import FakeLLM
 
     return FakeLLM()
