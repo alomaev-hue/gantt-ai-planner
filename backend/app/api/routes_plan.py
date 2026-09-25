@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import date
 
@@ -20,6 +21,25 @@ from app.services.errors import FileTooLarge
 router = APIRouter(prefix="/api/plan", tags=["plan"])
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_GUILLEMETS = re.compile(r"[«»]")
+_WHITESPACE = re.compile(r"\s+")
+FALLBACK_FILENAME = "plan.xlsx"
+
+
+def sanitize_filename(raw: str | None) -> str:
+    """Cleans an uploaded filename before it's echoed back into a chat note/summary (spec §9.1):
+    strips control chars/newlines (no injecting fake log lines into the note), collapses
+    whitespace, drops «» (we add our own around the name), and caps length."""
+    if not raw:
+        return FALLBACK_FILENAME
+    cleaned = _CONTROL_CHARS.sub("", raw)
+    cleaned = _GUILLEMETS.sub("", cleaned)
+    cleaned = _WHITESPACE.sub(" ", cleaned).strip()
+    if not cleaned:
+        return FALLBACK_FILENAME
+    return cleaned[:100]
 
 
 @router.get("")
@@ -87,7 +107,7 @@ async def import_plan(
     if not result.ok or result.plan is None:
         body = ImportFailure(ok=False, errors=result.errors, warnings=result.warnings)
         return JSONResponse(body.model_dump(mode="json"), status_code=422)
-    name = (file.filename or "plan.xlsx")[:100]
+    name = sanitize_filename(file.filename)
     service = get_service(request)
     state = await service.replace(
         session_id,

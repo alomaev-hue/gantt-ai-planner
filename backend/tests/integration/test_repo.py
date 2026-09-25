@@ -74,7 +74,7 @@ async def test_chat_order_and_rate_counts(sessionmaker):
         assert await repo.count_user_messages_since(db, since) == 4
 
 
-async def test_delete_expired_sessions(sessionmaker):
+async def test_delete_expired_session_ids(sessionmaker):
     async with sessionmaker() as db, db.begin():
         old = await repo.create_session(db, b"o" * 32)
         fresh = await repo.create_session(db, b"f" * 32)
@@ -84,5 +84,6 @@ async def test_delete_expired_sessions(sessionmaker):
             .values(last_seen_at=datetime.now(UTC) - timedelta(days=30))
         )
     async with sessionmaker() as db, db.begin():
-        assert await repo.delete_expired_sessions(db, datetime.now(UTC) - timedelta(days=14)) == 1
+        ids = await repo.delete_expired_session_ids(db, datetime.now(UTC) - timedelta(days=14))
+        assert ids == [old.id]
         assert await repo.get_session(db, fresh.id) is not None

@@ -13,6 +13,14 @@ class VersionMeta(NamedTuple):
     turn_id: uuid.UUID | None
 
 
+class VersionDiff(NamedTuple):
+    version_no: int
+    source: str
+    created_at: datetime
+    summary: str
+    diff: list[dict[str, Any]]
+
+
 async def create_session(db: AsyncSession, token_hash: bytes) -> SessionRow:
     row = SessionRow(token_hash=token_hash, current_version=0)
     db.add(row)
@@ -80,6 +88,25 @@ async def list_version_meta(db: AsyncSession, session_id: uuid.UUID) -> list[Ver
         .order_by(PlanVersionRow.version_no)
     )
     return [VersionMeta(v, t) for v, t in rows.all()]
+
+
+async def list_versions_upto(
+    db: AsyncSession, session_id: uuid.UUID, version_no: int
+) -> list[VersionDiff]:
+    """Versions <= `version_no`, newest first — the raw material for task history (spec §6:
+    "История задачи ... вычисляется из diff сохранённых версий")."""
+    rows = await db.execute(
+        select(
+            PlanVersionRow.version_no,
+            PlanVersionRow.source,
+            PlanVersionRow.created_at,
+            PlanVersionRow.summary,
+            PlanVersionRow.diff,
+        )
+        .where(PlanVersionRow.session_id == session_id, PlanVersionRow.version_no <= version_no)
+        .order_by(PlanVersionRow.version_no.desc())
+    )
+    return [VersionDiff(*row) for row in rows.all()]
 
 
 async def delete_versions_after(db: AsyncSession, session_id: uuid.UUID, version_no: int) -> None:
@@ -186,11 +213,6 @@ async def revoke_mcp_tokens(db: AsyncSession, session_id: uuid.UUID, now: dateti
 
 async def touch_mcp_token(db: AsyncSession, token_id: uuid.UUID, now: datetime) -> None:
     await db.execute(update(McpTokenRow).where(McpTokenRow.id == token_id).values(last_used_at=now))
-
-
-async def delete_expired_sessions(db: AsyncSession, older_than: datetime) -> int:
-    result = await db.execute(delete(SessionRow).where(SessionRow.last_seen_at < older_than))
-    return int(result.rowcount or 0)  # type: ignore[attr-defined]  # CursorResult at runtime
 
 
 async def delete_expired_session_ids(db: AsyncSession, older_than: datetime) -> list[uuid.UUID]:
