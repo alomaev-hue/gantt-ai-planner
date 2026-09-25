@@ -9,9 +9,10 @@ const SAMPLE = path.resolve(__dirname, "../../examples/sample-plan.xlsx");
 
 test("demo → import → chat edit → export", async ({ page }) => {
   await page.goto("/");
-  // Each task name is rendered twice — once in the grid's "Задача" column (a zero-width cell in
-  // this build, effectively invisible) and once as the Gantt bar label. `.last()` reliably lands
-  // on the visible bar; the brief's `.first()` would hit the invisible grid cell instead.
+  // Each task name is rendered twice — once in the grid's "Задача" column (visible in this
+  // build) and once as the Gantt bar label. Both are on-screen, but the bar label comes after
+  // the grid cell in the DOM, so `.last()` reliably targets it; the brief's `.first()` would
+  // hit the grid cell instead.
   await expect(page.getByText("Сбор требований и приоритизация").last()).toBeVisible();
 
   await page.getByRole("button", { name: "Загрузить Excel" }).click();
