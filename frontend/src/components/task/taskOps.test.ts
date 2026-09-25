@@ -1,4 +1,4 @@
-import { buildTaskOps, formFromTask, validateTaskForm } from "./taskOps";
+import { buildTaskOps, formFromTask, rebaseForm, validateTaskForm } from "./taskOps";
 import type { ScheduledTask } from "@/api/types";
 
 const task: ScheduledTask = {
@@ -41,4 +41,46 @@ test("validateTaskForm rejects out-of-range duration", () => {
   expect(validateTaskForm({ ...base, duration: 0 })).not.toBeNull();
   expect(validateTaskForm({ ...base, duration: 1000 })).not.toBeNull();
   expect(validateTaskForm({ ...base, duration: 999 })).toBeNull();
+});
+
+test("validateTaskForm rejects too long description", () => {
+  const base = formFromTask(task);
+  expect(validateTaskForm({ ...base, description: "a".repeat(2001) })).not.toBeNull();
+  expect(validateTaskForm({ ...base, description: "a".repeat(2000) })).toBeNull();
+});
+
+test("validateTaskForm rejects too long assignee", () => {
+  const base = formFromTask(task);
+  expect(validateTaskForm({ ...base, assignee: "a".repeat(101) })).not.toBeNull();
+  expect(validateTaskForm({ ...base, assignee: "a".repeat(100) })).toBeNull();
+});
+
+test("buildTaskOps diffs against baseline, not the live task, once a baseline is given", () => {
+  // The server (agent) changed duration 4 -> 5 server-side; the user is mid-edit of `name` only.
+  // Diffing directly against `task` (already updated to duration 5) would hide the fact that the
+  // *form* still shows the old duration 4 as unedited — but here baseline still says 4, so no
+  // spurious duration op appears, only the name edit the user actually made.
+  const serverUpdated: ScheduledTask = { ...task, duration: 5 };
+  const baseline = { ...formFromTask(task), duration: 5 }; // rebased alongside the server change
+  const form = { ...baseline, name: "Дизайн v2" };
+  expect(buildTaskOps(serverUpdated, form, baseline)).toEqual([{ op: "update_task", id: 7, name: "Дизайн v2" }]);
+});
+
+test("rebaseForm pulls fresh server values into untouched fields, leaves edited fields alone", () => {
+  const baseline = formFromTask(task);
+  const form = { ...baseline, name: "Дизайн v2" }; // user is editing name only
+  const fresh = { ...baseline, assignee: "Игорь", duration: 6 }; // server changed elsewhere
+
+  const result = rebaseForm(form, baseline, fresh);
+
+  expect(result.form).toEqual({ ...fresh, name: "Дизайн v2" });
+  expect(result.baseline).toEqual({ ...fresh, name: baseline.name });
+});
+
+test("rebaseForm is a no-op when the fresh values match the baseline", () => {
+  const baseline = formFromTask(task);
+  const form = { ...baseline, name: "Дизайн v2" };
+  const result = rebaseForm(form, baseline, baseline);
+  expect(result.form).toEqual(form);
+  expect(result.baseline).toEqual(baseline);
 });

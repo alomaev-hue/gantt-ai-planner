@@ -6,7 +6,9 @@ import type { ScheduledPlan, ScheduledTask } from "@/api/types";
 import { PLAN_KEY } from "@/hooks/usePlan";
 import { formatRu } from "@/lib/dates";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { buildTaskOps, formFromTask, validateTaskForm, type TaskForm } from "./taskOps";
+import { buildTaskOps, formFromTask, rebaseForm, validateTaskForm, type TaskForm } from "./taskOps";
+
+const ASSIGNEE_DATALIST_ID = "task-modal-assignees";
 
 function describeConstraint(task: ScheduledTask, plan: ScheduledPlan): string {
   if (task.constrained_by === "project_start") return "датой старта проекта";
@@ -35,15 +37,29 @@ export function TaskModal({
   disabled: boolean;
 }) {
   const queryClient = useQueryClient();
-  // The form (and its inline error) resets whenever `task` changes to a different task — done
-  // here, during render, rather than in an effect (which would cause an extra render pass just
-  // to re-derive state from a prop).
-  const [state, setState] = useState<{ taskId: number; form: TaskForm; error: string | null } | null>(null);
+  // `baseline` is the form as last known from the server (i.e. `formFromTask` of the task the
+  // form was seeded/rebased from); `form` is what's shown in the inputs. Diffing `form` against
+  // `baseline` (not the live `task` directly) in `buildTaskOps` means a server-side change to a
+  // field the user hasn't touched (agent edit, another tab) never gets read as a local edit that
+  // Save would silently revert. All of this resets/rebases during render, not in an effect —
+  // deriving state from a changed prop belongs in the render body per React's own guidance, and
+  // an effect doing the same thing would cost an extra render pass for no benefit.
+  const [state, setState] = useState<{ taskId: number; form: TaskForm; baseline: TaskForm; error: string | null } | null>(
+    null,
+  );
   const [saving, setSaving] = useState(false);
 
   if (task) {
     if (!state || state.taskId !== task.id) {
-      setState({ taskId: task.id, form: formFromTask(task), error: null });
+      const seeded = formFromTask(task);
+      setState({ taskId: task.id, form: seeded, baseline: seeded, error: null });
+    } else {
+      const fresh = formFromTask(task);
+      const staleBaseline = (Object.keys(fresh) as (keyof TaskForm)[]).some((key) => fresh[key] !== state.baseline[key]);
+      if (staleBaseline) {
+        const rebased = rebaseForm(state.form, state.baseline, fresh);
+        setState({ taskId: task.id, form: rebased.form, baseline: rebased.baseline, error: state.error });
+      }
     }
   } else if (state) {
     setState(null);
@@ -51,9 +67,13 @@ export function TaskModal({
 
   if (!task || !state) return null;
 
-  const { form, error } = state;
-  const setForm = (form: TaskForm) => setState({ taskId: task.id, form, error: null });
-  const setError = (error: string | null) => setState({ taskId: task.id, form, error });
+  const { form, baseline, error } = state;
+  const setForm = (form: TaskForm) => setState({ ...state, form, error: null });
+  const setError = (error: string | null) => setState({ ...state, error });
+
+  const assigneeOptions = Array.from(
+    new Set(plan.tasks.map((t) => t.assignee?.trim()).filter((a): a is string => Boolean(a))),
+  ).sort((a, b) => a.localeCompare(b, "ru"));
 
   const predecessors = plan.dependencies
     .filter((d) => d.successor_id === task.id)
@@ -64,7 +84,7 @@ export function TaskModal({
     .map((d) => plan.tasks.find((t) => t.id === d.successor_id))
     .filter((t): t is ScheduledTask => Boolean(t));
 
-  const ops = buildTaskOps(task, form);
+  const ops = buildTaskOps(task, form, baseline);
   const canSave = !disabled && !saving && ops.length > 0;
 
   const handleSave = async () => {
@@ -129,8 +149,14 @@ export function TaskModal({
               <input
                 className="rounded-md border border-input bg-background px-2 py-1"
                 value={form.assignee}
+                list={ASSIGNEE_DATALIST_ID}
                 onChange={(e) => setForm({ ...form, assignee: e.target.value })}
               />
+              <datalist id={ASSIGNEE_DATALIST_ID}>
+                {assigneeOptions.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
             </label>
             <label className="flex w-28 flex-col gap-1 text-sm">
               Длительность, дн.

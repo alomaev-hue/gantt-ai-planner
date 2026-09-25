@@ -20,6 +20,14 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
   const [warnings, setWarnings] = useState<ImportIssue[]>([]);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Re-derive the default date every time the dialog transitions closed -> open (not just once
+  // at mount) — done during render (tracking the previous `open` value) rather than in an
+  // effect, per the same "adjust state during render" pattern used elsewhere in this codebase.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setProjectStart(toISODate(nextMonday(new Date())));
+  }
 
   const reset = () => {
     setFile(null);

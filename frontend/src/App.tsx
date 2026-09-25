@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { usePlan } from "@/hooks/usePlan";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { SplitLayout } from "@/components/SplitLayout";
@@ -24,6 +25,18 @@ function App() {
   });
 
   const openTask = data?.plan.tasks.find((t) => t.id === openTaskId) ?? null;
+
+  // The open task can vanish server-side while the modal is up (agent/another tab deletes it).
+  // A genuine side effect (closing the modal, toasting) belongs in an effect, unlike deriving
+  // form state from a prop — that's why this isn't handled inline during render like `openTask`.
+  useEffect(() => {
+    if (!data || openTaskId == null) return;
+    const stillExists = data.plan.tasks.some((t) => t.id === openTaskId);
+    if (!stillExists) {
+      setOpenTaskId(null);
+      toast("Задача удалена");
+    }
+  }, [data, openTaskId]);
 
   return (
     <div className="flex h-screen min-h-0 flex-col">
