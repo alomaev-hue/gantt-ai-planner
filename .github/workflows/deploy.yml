@@ -37,10 +37,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build once, load into the local Docker daemon (single-arch: the deploy
+      # target is linux/amd64 only), and scan that exact image with Trivy
+      # *before* anything reaches the registry. Only after the scan passes do
+      # we push the already-built image — no rebuild, so the pushed bytes are
+      # exactly what was scanned.
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          push: true
+          platforms: linux/amd64
+          load: true
+          push: false
           tags: |
             ghcr.io/alomaev-hue/gantt-ai-planner:${{ steps.meta.outputs.tag }}
             ghcr.io/alomaev-hue/gantt-ai-planner:latest
@@ -51,6 +58,11 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: true
+
+      - name: Push scanned image to GHCR
+        run: |
+          docker push ghcr.io/alomaev-hue/gantt-ai-planner:${{ steps.meta.outputs.tag }}
+          docker push ghcr.io/alomaev-hue/gantt-ai-planner:latest
 
       - name: Deploy over SSH
         env:
