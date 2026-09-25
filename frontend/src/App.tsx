@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { usePlan } from "@/hooks/usePlan";
+import { api, ApiError } from "@/api/client";
+import type { Operation } from "@/api/types";
+import { PLAN_KEY, usePlan } from "@/hooks/usePlan";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
@@ -11,6 +14,7 @@ import { ImportDialog } from "@/components/import/ImportDialog";
 import type { Zoom } from "@/components/gantt/mapping";
 
 function App() {
+  const queryClient = useQueryClient();
   const { data, isLoading, isError, error } = usePlan();
   const [zoom, setZoom] = useState<Zoom>("day");
   const [focusedIds, setFocusedIds] = useState<ReadonlySet<number>>(() => new Set());
@@ -25,6 +29,22 @@ function App() {
   });
 
   const openTask = data?.plan.tasks.find((t) => t.id === openTaskId) ?? null;
+
+  // Drag/resize/link edits from the Gantt chart itself (TaskModal has its own copy of this same
+  // apply-and-refresh flow). The backend is the source of truth: a successful apply replaces the
+  // cached plan outright (like TaskModal's `setQueryData`) so every consumer — the chart, the
+  // toolbar's undo/redo, the task modal — re-renders from it; a failed apply is rethrown after
+  // toasting so GanttView knows to snap the bar/link back to the last known-good plan.
+  const onApplyPlanOps = async (ops: Operation[]) => {
+    try {
+      const res = await api.applyOps(ops);
+      queryClient.setQueryData(PLAN_KEY, res);
+      res.warnings.forEach((warning) => toast.warning(warning));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Не удалось применить изменение");
+      throw err;
+    }
+  };
 
   // The open task can vanish server-side while the modal is up (agent/another tab deletes it).
   // A genuine side effect (closing the modal, toasting) belongs in an effect, unlike deriving
@@ -60,8 +80,9 @@ function App() {
                 plan={data.plan}
                 zoom={zoom}
                 highlighted={focusedIds}
-                readOnly
+                readOnly={agentBusy}
                 onOpenTask={(id) => setOpenTaskId(id)}
+                onApply={onApplyPlanOps}
               />
             }
             right={

@@ -45,7 +45,8 @@
   background: var(--gantt-today);
 }
 
-/* Phase 1 is read-only: progress is not tracked yet, so hide the drag handle. */
+/* Progress isn't part of our domain model (ScheduledTask has no such field) — hide the handle so
+   it can't be dragged into a state we'd just silently discard. */
 .wx-progress-marker {
   display: none;
 }

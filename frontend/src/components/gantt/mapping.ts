@@ -34,6 +34,11 @@ export function toSvarLinks(plan: ScheduledPlan): SvarLink[] {
 // SVAR's `select-task` API event, which also fires on keyboard grid navigation.
 export function closestTaskId(target: EventTarget | null): number | null {
   if (!(target instanceof Element)) return null;
+  // A click on a bar's link connector (`.wx-link`, the little dot at each end used to draw a
+  // dependency) still bubbles up through the bar's own `[data-id]` element — without this guard
+  // it would pop the task modal open *and* cover the target connector before the user's second
+  // click can land on it, making it impossible to ever finish drawing a link.
+  if (target.closest(".wx-link")) return null;
   const el = target.closest("[data-id]");
   const raw = el?.getAttribute("data-id");
   if (!raw) return null;

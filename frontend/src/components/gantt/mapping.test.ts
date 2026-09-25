@@ -39,3 +39,12 @@ test("closestTaskId returns null without a data-id ancestor or a non-element tar
   expect(closestTaskId(outside)).toBeNull();
   expect(closestTaskId(null)).toBeNull();
 });
+
+test("closestTaskId ignores a click on a link connector so link-drawing isn't interrupted", () => {
+  const row = document.createElement("div");
+  row.setAttribute("data-id", "7");
+  const dot = document.createElement("div");
+  dot.className = "wx-link wx-right wx-target";
+  row.appendChild(dot);
+  expect(closestTaskId(dot)).toBeNull();
+});

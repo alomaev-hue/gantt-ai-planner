@@ -19,3 +19,15 @@ export function nextMonday(from: Date): Date {
   const day = from.getDay(); // 0 Sun .. 6 Sat
   return addDays(from, day === 1 ? 0 : (8 - day) % 7);
 }
+// Counts Mon-Fri days between `start` and `end`, both inclusive. Mirrors the backend scheduler's
+// workday calendar (backend/app/domain/scheduler.py): weekends never count toward a duration.
+export function workdaysBetweenInclusive(start: Date, end: Date): number {
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
