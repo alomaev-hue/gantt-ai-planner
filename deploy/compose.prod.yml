@@ -1,0 +1,130 @@
+# Production stack for the gantt-planner app, deployed at /opt/gantt-planner
+# on the shared VPS. Started with:
+#   docker compose -f compose.prod.yml up -d
+# from /opt/gantt-planner (so relative secrets:/ .env resolve correctly).
+#
+# Networks:
+#   - edge: external, shared with the host's Caddy reverse-proxy stack
+#     (/opt/caddy). Created once by deploy/bootstrap.sh.
+#   - backend: internal-only, app <-> db traffic never reaches the host.
+#
+# See docs/runbook.md for operational procedures.
+
+networks:
+  edge:
+    external: true
+  backend:
+    internal: true
+
+secrets:
+  anthropic_api_key:
+    file: ./secrets/anthropic_api_key
+  db_app_password:
+    file: ./secrets/db_app_password
+  db_owner_password:
+    file: ./secrets/db_owner_password
+  pg_superuser_password:
+    file: ./secrets/pg_superuser_password
+
+services:
+  db:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    shm_size: 64mb
+    mem_limit: 256m
+    command: postgres -c shared_buffers=64MB -c max_connections=20
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_superuser_password
+    secrets:
+      - db_app_password
+      - db_owner_password
+      - pg_superuser_password
+    volumes:
+      - /var/lib/gantt-planner/pg:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  migrate:
+    image: ghcr.io/alomaev-hue/gantt-ai-planner:${IMAGE_TAG}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: planner
+      DB_USER: planner_owner
+      SECRETS_DIR: /run/secrets
+    secrets:
+      - source: db_owner_password
+        target: db_password
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    image: ghcr.io/alomaev-hue/gantt-ai-planner:${IMAGE_TAG}
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: planner
+      DB_USER: planner_app
+      SECRETS_DIR: /run/secrets
+      LLM_PROVIDER: anthropic
+      LLM_MODEL: claude-sonnet-5
+      COOKIE_SECURE: "true"
+      PUBLIC_ORIGIN: https://gantt-ai-planner.duckdns.org
+    secrets:
+      - anthropic_api_key
+      - source: db_app_password
+        target: db_password
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 300m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      backend: {}
+      edge:
+        aliases:
+          - planner-app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

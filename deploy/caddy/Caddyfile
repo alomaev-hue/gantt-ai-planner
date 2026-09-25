@@ -1,0 +1,23 @@
+{
+	admin off
+}
+
+gantt-ai-planner.duckdns.org {
+	encode gzip zstd
+
+	request_body {
+		max_size 5MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy planner-app:8000 {
+		flush_interval -1
+	}
+}

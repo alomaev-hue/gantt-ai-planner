@@ -1,0 +1,36 @@
+# Shared reverse-proxy stack for the whole VPS, deployed once at /opt/caddy.
+# Terminates TLS (Let's Encrypt HTTP-01) for every site on this host,
+# including gantt-ai-planner.duckdns.org. Started by deploy/bootstrap.sh
+# and left running independently of the app stack's deploys.
+#
+# Only touches the 'edge' network and ports 80/443 - never other services
+# on this shared host.
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+services:
+  caddy:
+    image: caddy:2@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
+    restart: unless-stopped
+    mem_limit: 64m
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

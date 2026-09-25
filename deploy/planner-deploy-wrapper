@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# planner-deploy-wrapper
+#
+# Forced command for the 'deploy' SSH user (see authorized_keys entry
+# below). SSH sets SSH_ORIGINAL_COMMAND to whatever the client asked to
+# run; this wrapper accepts exactly one token that looks like an image
+# tag and nothing else, then execs `sudo planner-deploy <tag>`. Any other
+# input (extra tokens, shell metacharacters, empty input, bad tag shape)
+# is rejected without ever touching sudo.
+#
+# authorized_keys line for the CI deploy key:
+#   restrict,command="/usr/local/bin/planner-deploy-wrapper" ssh-ed25519 AAAA... gha-gantt-planner
+set -euo pipefail
+
+TAG_RE='^sha-[0-9a-f]{7,40}$'
+PLANNER_DEPLOY_BIN=/usr/local/bin/planner-deploy
+
+# Intentionally unquoted: this is the only word-splitting step, and it is
+# what turns "exactly one token" into a real argument count check below.
+# shellcheck disable=SC2086
+set -- ${SSH_ORIGINAL_COMMAND:-}
+
+if [ "$#" -ne 1 ]; then
+    echo "planner-deploy-wrapper: expected exactly one argument (a tag), got: ${SSH_ORIGINAL_COMMAND:-<empty>}" >&2
+    exit 1
+fi
+
+tag="$1"
+
+if ! [[ "$tag" =~ $TAG_RE ]]; then
+    echo "planner-deploy-wrapper: rejected tag '$tag' (must match $TAG_RE)" >&2
+    exit 1
+fi
+
+exec sudo "$PLANNER_DEPLOY_BIN" "$tag"
