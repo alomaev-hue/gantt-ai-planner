@@ -23,7 +23,7 @@ from app.api import (
     routes_plan,
     routes_session,
 )
-from app.api.errors import install_error_handlers
+from app.api.errors import error_response, install_error_handlers
 from app.config import Settings, get_settings
 from app.db.engine import make_engine, make_sessionmaker
 from app.logging_setup import AccessLogMiddleware
@@ -169,6 +169,20 @@ def create_app(
         async with app.state.sessionmaker() as db:
             await db.execute(text("SELECT 1"))
         return JSONResponse({"status": "ok"})
+
+    # Unknown API paths answer with the JSON error envelope, for every method: otherwise a
+    # GET falls through to the SPA catch-all (index.html, 200) and other methods to a 405.
+    # A wrong method on an existing API path also lands here (404 instead of 405).
+    @app.api_route(
+        "/api/{rest:path}",
+        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        include_in_schema=False,
+    )
+    @app.api_route(
+        "/api", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
+    )
+    async def unknown_api(rest: str = "") -> JSONResponse:
+        return error_response("not_found", "Нет такого метода API", status=404)
 
     app.mount("/mcp", mcp_app)
 
