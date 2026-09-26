@@ -8,5 +8,8 @@ docs
 **/*.pyc
 frontend/test-results
 frontend/playwright-report
-.env
-secrets
+**/.env
+**/secrets
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
