@@ -161,7 +161,7 @@ Browser (React SPA)
 
 ## MCP
 
-Инструменты MCP-сервера `planner` (`backend/app/mcp_server/server.py`): `get_plan()`, `find_tasks(query?, assignee?, critical_only?)`, `get_task(id)`, `get_resource_load(assignee?)`, `apply_operations(ops, confirmed?)`, `undo()`. У инструментов нет параметра `session_id` — сессия определяется транспортом, поэтому ни модель, ни внешний клиент не может обратиться к чужому плану.
+Инструменты MCP-сервера `planner` (`backend/app/mcp_server/server.py`): `get_plan()`, `find_tasks(query?, assignee?, critical_only?)`, `get_task(id)`, `get_resource_load(assignee?)`, `apply_operations(operations, confirmed?)` (до 200 операций в пакете), `undo()`. У инструментов нет параметра `session_id` — сессия определяется транспортом, поэтому ни модель, ни внешний клиент не может обратиться к чужому плану.
 
 Два клиента одного и того же сервера:
 
@@ -191,7 +191,7 @@ Browser (React SPA)
 ## Задача: история, загрузка исполнителей, тема
 
 - **История изменений задачи.** Модалка задачи показывает историю правок конкретной задачи (`GET /api/plan/tasks/{id}/history`, компонент `frontend/src/components/task/TaskHistory.tsx`).
-- **Панель загрузки исполнителей** («Загрузка», `frontend/src/components/ResourcePanel.tsx`) — сколько рабочих дней занято у каждого исполнителя, поверх `get_resource_load` из MCP-инструментов.
+- **Панель загрузки исполнителей** («Загрузка», `frontend/src/components/ResourcePanel.tsx`) — сколько рабочих дней занято у каждого исполнителя и где перегрузка; считается на клиенте из уже загруженного плана (`computeResourceSummary`, `frontend/src/lib/resourceSummary.ts`), отдельного запроса нет. Агенту и внешним MCP-клиентам загрузку отдаёт отдельный инструмент `get_resource_load` (задачи исполнителя по датам и пары пересекающихся задач).
 - **Переключатель темы** — светлая/тёмная/как в системе (`frontend/src/hooks/useTheme.ts`, переключается из тулбара).
 - **Демо-режим без LLM.** `GET /api/meta` отдаёт `llm_mode`; если ключ Anthropic не задан (`LLM_PROVIDER=fake` или пустой ключ), в тулбаре показывается бейдж «Демо-режим без LLM» (`backend/app/api/routes_meta.py`, `frontend/src/components/Toolbar.tsx`).
 
@@ -227,7 +227,7 @@ Browser (React SPA)
 - **Атомарный рейт-лимит чата.** Проверка лимита и вставка сообщения идут в одной транзакции под `pg_advisory_xact_lock`, иначе конкурентные запросы могли бы обойти лимит гонкой (`backend/app/api/routes_chat.py`).
 - **Лимиты на IP.** Не больше 20 новых сессий и 60 сообщений чата в час с одного адреса (`SESSION_LIMIT_PER_IP_HOUR`, `CHAT_LIMIT_PER_IP_HOUR`; скользящее окно в памяти процесса, `backend/app/services/iplimit.py`) — чтобы один клиент не раздувал БД сессиями и не выбирал общий дневной лимит чата. Адрес клиента берётся из последнего звена `X-Forwarded-For` только при `TRUST_PROXY=true` (прод, где запросы приходят только через Caddy), иначе — адрес TCP-соединения. Пакет операций — не больше 200 штук (`MAX_BATCH_OPS`).
 - **Защита импорта Excel.** Лимит на количество строк и проверка заявленного (несжатого) размера содержимого архива `.xlsx` против «zip-бомбы» — до распаковки (`backend/app/excel/parse.py`); имя загружаемого файла санитизируется перед использованием (`backend/app/api/routes_plan.py`, `sanitize_filename`).
-- **CI/CD.** Образ сканируется Trivy перед публикацией в GHCR (`.github/workflows/deploy.yml`); Dependabot обновляет зависимости backend (uv), frontend (npm), GitHub Actions, `Dockerfile` и compose-файлы деплоя (`.github/dependabot.yml`).
+- **CI/CD.** Деплой только из `main` этого репозитория (условие в `.github/workflows/deploy.yml` плюс required reviewers на окружении `production`); образ сканируется Trivy перед публикацией в GHCR. Эксплуатация — `docs/runbook.md`: первичная настройка VPS, деплой, откат, ротация секретов; его ручные команды заменяют `scripts/deploy-manual.sh` из спецификации (§14), отдельного скрипта нет; Dependabot обновляет зависимости backend (uv), frontend (npm), GitHub Actions, `Dockerfile` и compose-файлы деплоя (`.github/dependabot.yml`).
 - **Данные уходят к Anthropic.** Сообщения чата и компактное представление плана отправляются в API Anthropic для генерации ответа и вызова инструментов. **Используйте только вымышленные данные** — не загружайте реальные ФИО, контакты или иные персональные данные в демо-план или Excel-файлы. Обработка и хранение реальных персональных данных граждан РФ по 152-ФЗ (в том числе требование о хранении/обработке на территории РФ) для сервиса, физически размещённого не в РФ и использующего внешний LLM-API, не проработана и записана как риск и пункт Roadmap.
 
 ## Как использовались AI-ассистенты

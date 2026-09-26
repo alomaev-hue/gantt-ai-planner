@@ -57,7 +57,7 @@
      visibility → Public;
    - вписать реальный ключ Anthropic в
      `/opt/gantt-planner/secrets/anthropic_api_key` (без переноса строки
-     в конце — как отдаёт провайдер, `printf '%s' '<key>' > .../anthropic_api_key`).
+     в конце и не через аргумент команды — см. «Ключ Anthropic» в разделе 3).
      Пока владелец не заполнил этот файл (bootstrap создаёт его пустым),
      приложение работает в демо-режиме без LLM — `make_llm()` видит
      пустой ключ, логирует это (без содержимого ключа) и отдаёт
@@ -100,9 +100,10 @@
 ## 2. Регулярный деплой
 
 Обычный путь — через CD (`.github/workflows/deploy.yml`): после зелёного
-CI на `main` GitHub Actions собирает образ, публикует его в GHCR под
-тегами `sha-<short>` и `latest`, прогоняет Trivy (падает на CRITICAL) и
-по SSH выполняет:
+CI на push в `main` GitHub Actions собирает образ, сканирует его Trivy
+(падает на CRITICAL) и только после этого публикует в GHCR под тегами
+`sha-<short>` и `latest` (публикуется ровно просканированный образ, без
+пересборки), затем по SSH выполняет:
 
 ```bash
 ssh -i <deploy-key> deploy@<host> sha-<short>
@@ -142,6 +143,11 @@ Forced command `planner-deploy-wrapper` проверяет, что пришёл 
 
 ### Ручной деплой конкретного тега (без CI)
 
+Отдельного `scripts/deploy-manual.sh`, который упоминает спецификация
+(§14), нет: его роль выполняют команды этого раздела и первого деплоя
+(§1, п. 4) — `planner-deploy` уже делает pull, запуск, healthcheck и
+откат.
+
 ```bash
 ssh -i <deploy-key> deploy@<host> sha-<short>
 ```
@@ -180,7 +186,8 @@ ssh -i <deploy-key> deploy@<host> sha-<предыдущий-short>
 ### Ключ Anthropic
 
 ```bash
-printf '%s' '<новый-ключ>' > /opt/gantt-planner/secrets/anthropic_api_key
+# Ключ вводится без эха и не попадает ни в историю shell, ни в аргументы команд.
+read -rs -p 'Новый ключ Anthropic: ' key && printf '%s' "$key" > /opt/gantt-planner/secrets/anthropic_api_key; unset key
 cd /opt/gantt-planner && docker compose -f compose.prod.yml up -d --force-recreate app
 ```
 Старый ключ отозвать в консоли Anthropic после подтверждения, что новый
@@ -192,26 +199,37 @@ cd /opt/gantt-planner && docker compose -f compose.prod.yml up -d --force-recrea
 контейнера; сам пароль в Postgres нужно поменять отдельно командой
 `ALTER ROLE`, иначе роль и файл разойдутся.
 
+Новый пароль нигде не должен оказаться в открытом виде: ни в аргументах
+команд (их видно в `ps`), ни в истории shell, ни в логе Postgres. Поэтому
+он сразу пишется в файл, а в `psql` попадает только через stdin:
+
 ```bash
 cd /opt/gantt-planner
-new_pw="$(openssl rand -base64 32)"
 
-# Пример для planner_app; для planner_owner и суперпользователя —
-# аналогично, с соответствующей ролью/файлом.
-docker compose -f compose.prod.yml exec -T db psql -U postgres -c \
-  "ALTER ROLE planner_app PASSWORD '${new_pw}';"
+# Пример для planner_app; для planner_owner — аналогично, с его ролью/файлом.
+( umask 077 && openssl rand -base64 32 | tr -d '\n' > secrets/db_app_password.new )
 
-printf '%s' "$new_pw" > secrets/db_app_password
+# printf — встроенная команда bash (не отдельный процесс), так что пароль
+# идёт только через pipe; SET выключает запись текста запроса в лог
+# сервера, если ALTER вдруг упадёт. В base64 нет кавычек.
+{
+  echo "SET log_min_error_statement = panic;"
+  printf "ALTER ROLE planner_app PASSWORD '%s';\n" "$(cat secrets/db_app_password.new)"
+} | docker compose -f compose.prod.yml exec -T db psql -U postgres -v ON_ERROR_STOP=1 -q
+
+mv secrets/db_app_password.new secrets/db_app_password
 chmod 0444 secrets/db_app_password
 
 docker compose -f compose.prod.yml up -d --force-recreate app
 ```
 
-Для `pg_superuser_password` (переменная `POSTGRES_PASSWORD_FILE`) вместо
-`ALTER ROLE` от `postgres` нужно выполнить `ALTER ROLE postgres
-PASSWORD ...` тем же способом, затем пересоздать секрет-файл и
-перезапустить `db` (это вызовет короткий даунтайм — сделать вне пиковых
-часов).
+Если ALTER упал, `.new`-файл остаётся, а рабочий пароль не меняется —
+разобраться с ошибкой и повторить.
+
+Для `pg_superuser_password` (переменная `POSTGRES_PASSWORD_FILE`) — то же
+самое с `ALTER ROLE postgres` и файлом `secrets/pg_superuser_password`,
+затем перезапустить `db` (это вызовет короткий даунтайм — сделать вне
+пиковых часов).
 
 Ключевой момент: **никогда не менять только файл секрета** — контейнер
 Postgres создаёт роли один раз, при первом старте на пустом томе;
@@ -285,9 +303,12 @@ deploy-ключ или сам сервер — отзываем всё сраз�
    `GITHUB_TOKEN`-зависимые интеграции (пакет в GHCR публичный, но права
    на публикацию идут через сам workflow).
 5. **Сессии пользователей**: если есть подозрение на утечку данных
-   планов — сессии хранятся в БД (`session_id` в куке — это просто
-   ссылка на строку), инвалидировать их можно, удалив соответствующие
-   строки из таблицы сессий напрямую через `psql` в контейнере `db`.
+   планов — в куке `__Host-sid` лежит случайный непрозрачный токен
+   (256 бит), а в БД хранится только его sha256 (`sessions.token_hash`),
+   так что дамп БД сам по себе не даёт войти в чужую сессию.
+   Инвалидировать сессии можно, удалив строки из таблицы `sessions`
+   через `psql` в контейнере `db` (каскадно удалятся версии планов, чат
+   и MCP-токены).
 6. Зафиксировать инцидент: что произошло, что отозвано и когда, что
    проверено после — как дополнение к этому разделу или в отдельном
    issue.
