@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -b --noEmit",
-    "e2e": "playwright test -c e2e/playwright.config.ts"
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "demo": "node ../scripts/record_demo.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
