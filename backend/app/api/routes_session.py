@@ -2,7 +2,14 @@ import uuid
 
 from fastapi import APIRouter, Depends, Request, Response
 
-from app.api.deps import check_origin, cookie_name, get_service, require_session
+from app.api.deps import (
+    check_origin,
+    clear_session_cookie,
+    cookie_name,
+    get_service,
+    require_session,
+    set_session_cookie,
+)
 
 router = APIRouter(prefix="/api", tags=["session"])
 
@@ -17,15 +24,7 @@ async def create_session(
     if token is not None and await service.resolve_session(token) is not None:
         return {"ok": True}
     new_token, _session_id = await service.create_session()
-    response.set_cookie(
-        cookie_name(settings),
-        new_token,
-        max_age=settings.session_ttl_days * 86400,
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite="lax",
-        path="/",
-    )
+    set_session_cookie(response, settings, new_token)
     return {"ok": True}
 
 
@@ -39,4 +38,4 @@ async def delete_session(
     settings = request.app.state.settings
     service = get_service(request)
     await service.delete_session(session_id)
-    response.delete_cookie(cookie_name(settings), path="/")
+    clear_session_cookie(response, settings)

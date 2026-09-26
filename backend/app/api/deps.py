@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import Request
+from fastapi import Request, Response
 
 from app.config import Settings
 from app.services.errors import BadOrigin, NoSession
@@ -11,6 +11,30 @@ UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 
 def cookie_name(settings: Settings) -> str:
     return "__Host-sid" if settings.cookie_secure else "sid"
+
+
+def set_session_cookie(response: Response, settings: Settings, token: str) -> None:
+    response.set_cookie(
+        cookie_name(settings),
+        token,
+        max_age=settings.session_ttl_days * 86400,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_session_cookie(response: Response, settings: Settings) -> None:
+    # Same attributes as when set: browsers ignore a __Host- cookie (deletion included)
+    # that comes without Secure.
+    response.delete_cookie(
+        cookie_name(settings),
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
 
 
 def get_service(request: Request) -> PlanService:

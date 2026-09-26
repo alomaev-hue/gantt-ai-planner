@@ -6,7 +6,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 
-from app.api.deps import check_origin, get_service, require_session
+from app.api.deps import (
+    check_origin,
+    cookie_name,
+    get_service,
+    require_session,
+    set_session_cookie,
+)
 from app.api.schemas import (
     ApplyRequest,
     ApplyResponse,
@@ -45,8 +51,12 @@ def sanitize_filename(raw: str | None) -> str:
 
 @router.get("")
 async def get_plan(
-    request: Request, session_id: uuid.UUID = Depends(require_session)
+    request: Request, response: Response, session_id: uuid.UUID = Depends(require_session)
 ) -> PlanResponse:
+    # Every visit loads the plan: re-issue the cookie so it expires session_ttl_days after the
+    # LAST visit (spec), matching the server-side last_seen_at purge, not after creation.
+    settings = request.app.state.settings
+    set_session_cookie(response, settings, request.cookies[cookie_name(settings)])
     service = get_service(request)
     state = await service.get_state(session_id)
     return to_plan_response(state, service.locks.is_busy(session_id))
