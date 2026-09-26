@@ -9,6 +9,7 @@ import type {
   PlanResponse,
   TaskHistoryEntry,
 } from "./types";
+import { toISODate } from "@/lib/dates";
 
 export class ApiError extends Error {
   status: number;
@@ -23,7 +24,8 @@ export class ApiError extends Error {
   }
 }
 
-export const EXPORT_URL = "/api/plan/export";
+// The backend names the file after this date (its own clock is UTC, a day off near midnight).
+export const exportUrl = (now: Date = new Date()) => `/api/plan/export?today=${toISODate(now)}`;
 
 export async function ensureSession(): Promise<void> {
   const res = await fetch("/api/session", { method: "POST" });

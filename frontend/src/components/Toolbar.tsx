@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Download, Link2, Monitor, Moon, MoreVertical, Redo2, RotateCcw, Sun, Undo2, Upload } from "lucide-react";
-import { api, ApiError, EXPORT_URL } from "@/api/client";
+import { api, ApiError, exportUrl } from "@/api/client";
 import type { PlanResponse } from "@/api/types";
 import { PLAN_KEY } from "@/hooks/usePlan";
 import { useMeta } from "@/hooks/useMeta";
@@ -82,7 +82,11 @@ export function Toolbar({
       </button>
 
       <a
-        href={EXPORT_URL}
+        href={exportUrl()}
+        // Recomputed on click too, in case the page has stayed open past midnight.
+        onClick={(e) => {
+          e.currentTarget.href = exportUrl();
+        }}
         download
         title="Экспорт"
         aria-label="Экспорт"

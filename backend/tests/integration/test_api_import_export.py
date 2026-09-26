@@ -1,5 +1,7 @@
+from datetime import date
 from io import BytesIO
 
+import pytest
 from openpyxl import Workbook, load_workbook
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -52,6 +54,18 @@ async def test_import_errors_and_size_limit(session_client):
         data={"project_start": "2026-10-05"},
     )
     assert r.status_code == 413 and r.json()["error"]["code"] == "file_too_large"
+
+
+async def test_export_filename_uses_the_clients_date(session_client):
+    r = await session_client.get("/api/plan/export", params={"today": "2026-12-31"})
+    assert 'filename="plan-2026-12-31.xlsx"' in r.headers["content-disposition"]
+
+
+@pytest.mark.parametrize("bad", ["2026-13-01", "31.12.2026", 'x"; evil=1', ""])
+async def test_export_filename_falls_back_to_server_date_on_bad_input(session_client, bad):
+    r = await session_client.get("/api/plan/export", params={"today": bad})
+    assert r.status_code == 200
+    assert f'filename="plan-{date.today():%Y-%m-%d}.xlsx"' in r.headers["content-disposition"]
 
 
 async def test_export_downloads_xlsx(session_client):

@@ -21,3 +21,8 @@ test("errors carry code and message", async () => {
     new Response(JSON.stringify({ error: { code: "agent_busy", message: "Агент занят" } }), { status: 409 })));
   await expect(api.undo()).rejects.toMatchObject({ status: 409, code: "agent_busy", message: "Агент занят" });
 });
+
+test("export URL carries the user's local calendar date", async () => {
+  const { exportUrl } = await import("./client");
+  expect(exportUrl(new Date(2026, 11, 31, 23, 30))).toBe("/api/plan/export?today=2026-12-31");
+});

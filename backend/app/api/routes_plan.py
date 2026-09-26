@@ -33,6 +33,7 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _GUILLEMETS = re.compile(r"[«»]")
 _WHITESPACE = re.compile(r"\s+")
 FALLBACK_FILENAME = "plan.xlsx"
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def sanitize_filename(raw: str | None) -> str:
@@ -144,14 +145,28 @@ async def task_history(
     return [{**entry, "created_at": entry["created_at"].isoformat()} for entry in entries]
 
 
+def _client_date(raw: str | None) -> date:
+    """The user's calendar date for the export filename (the container's clock is UTC, so
+    near midnight it can be a day off). Anything that isn't a YYYY-MM-DD date falls back to
+    the server date; the filename is always rebuilt from a parsed date, never echoed."""
+    if raw and _ISO_DATE.fullmatch(raw):
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            pass
+    return date.today()
+
+
 @router.get("/export")
 async def export_plan(
-    request: Request, session_id: uuid.UUID = Depends(require_session)
+    request: Request,
+    session_id: uuid.UUID = Depends(require_session),
+    today: str | None = None,
 ) -> Response:
     service = get_service(request)
     state = await service.get_state(session_id)
     data = export_plan_xlsx(state.scheduled)
-    filename = f"plan-{date.today():%Y-%m-%d}.xlsx"
+    filename = f"plan-{_client_date(today):%Y-%m-%d}.xlsx"
     return Response(
         data,
         media_type=XLSX_MIME,
