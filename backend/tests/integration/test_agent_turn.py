@@ -3,6 +3,7 @@ from datetime import date
 from app.agent.llm import Completed, LLMError, LLMToolCall, LLMTurnResult, TextDelta
 from app.agent.loop import Agent
 from app.db import repo
+from app.domain.calendar import add_workdays
 
 TODAY = date(2026, 9, 25)
 
@@ -37,6 +38,21 @@ async def test_bulk_move_is_one_undo_group(app):
     async with app.state.service.sessionmaker() as db:
         msgs = await repo.recent_chat_messages(db, sid, 10)
     assert all("[fake]" not in m.content for m in msgs)
+
+
+async def test_bulk_shift_moves_each_task_and_project_end_exactly_n_workdays(app):
+    # Regression: shifting a chain (Дмитрий owns successive tasks in the demo plan) used to
+    # compound — successors moved 6 and 9 workdays and project_end moved 9 instead of 3.
+    sid = await new_sid(app)
+    before = (await app.state.service.get_state(sid)).scheduled
+    dmitry = [t.id for t in before.tasks if t.assignee and t.assignee.startswith("Дмитри")]
+    assert len(dmitry) >= 2
+    events = await collect(app.state.agent, sid, "Сдвинь все задачи Дмитрия на 3 дня")
+    assert events[-1]["type"] == "done"
+    after = (await app.state.service.get_state(sid)).scheduled
+    for tid in dmitry:
+        assert after.task(tid).start == add_workdays(before.task(tid).start, 3), tid
+    assert after.project_end == add_workdays(before.project_end, 3)
 
 
 async def test_turn_persists_chat_and_clears_busy(app):

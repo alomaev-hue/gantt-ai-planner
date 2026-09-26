@@ -198,3 +198,49 @@ def test_move_task_requires_exactly_one_target():
         ops({"op": "move_task", "id": 1})
     with pytest.raises(ValueError):
         ops({"op": "move_task", "id": 1, "shift_days": 1, "start_date": "2026-09-22"})
+
+
+def test_shifting_predecessor_and_successor_moves_each_exactly_once():
+    # Chain 1 -> 2 -> 3, every task shifted +3 in one batch: each must start exactly 3 workdays
+    # later than before the batch (the successor must not also inherit its predecessor's shift).
+    before = apply_operations(base_plan(), []).scheduled
+    res = apply_operations(
+        base_plan(),
+        ops(*({"op": "move_task", "id": i, "shift_days": 3} for i in (1, 2, 3))),
+    )
+    for tid in (1, 2, 3):
+        assert res.scheduled.task(tid).start == add_expected(before.task(tid).start, 3), tid
+    assert res.scheduled.project_end == add_expected(before.project_end, 3)
+
+
+def test_shift_order_does_not_matter_within_a_batch():
+    forward = apply_operations(
+        base_plan(), ops(*({"op": "move_task", "id": i, "shift_days": 2} for i in (1, 2)))
+    )
+    backward = apply_operations(
+        base_plan(), ops(*({"op": "move_task", "id": i, "shift_days": 2} for i in (2, 1)))
+    )
+    assert [t.start for t in forward.scheduled.tasks] == [t.start for t in backward.scheduled.tasks]
+
+
+def test_repeated_shift_of_one_task_accumulates():
+    before = apply_operations(base_plan(), []).scheduled
+    res = apply_operations(
+        base_plan(),
+        ops(
+            {"op": "move_task", "id": 4, "shift_days": 2},
+            {"op": "move_task", "id": 4, "shift_days": 1},
+        ),
+    )
+    assert res.scheduled.task(4).start == add_expected(before.task(4).start, 3)
+
+
+def test_shift_of_task_created_in_same_batch_uses_its_scheduled_start():
+    res = apply_operations(
+        base_plan(),
+        ops(
+            {"op": "add_task", "name": "Новая", "duration": 1, "predecessors": [{"id": 3}]},
+            {"op": "move_task", "id": 5, "shift_days": 2},
+        ),
+    )
+    assert res.scheduled.task(5).start == add_expected(add_expected(res.scheduled.task(3).end, 1), 2)

@@ -120,7 +120,7 @@ def apply_operations(plan: Plan, ops: Sequence[Operation]) -> ApplyResult:
     moved: list[int] = []
     for index, op in enumerate(ops):
         try:
-            _apply_one(work, op, created, moved)
+            _apply_one(work, op, created, moved, before)
         except OperationError as exc:
             exc.index = index
             exc.message = f"Операция {index + 1} ({op.op}): {exc.message}"
@@ -170,7 +170,25 @@ def _upsert_dep(plan: Plan, pred: int, succ: int, lag: int) -> None:
     plan.dependencies.append(Dependency(predecessor_id=pred, successor_id=succ, lag=lag))
 
 
-def _apply_one(plan: Plan, op: Operation, created: list[int], moved: list[int]) -> None:
+def _shift_base(plan: Plan, task: Task, moved: list[int], before: ScheduledPlan) -> date:
+    """Start a `shift_days` move is measured from.
+
+    A shift is relative to the plan as it was when the batch started, NOT to the partly edited
+    working copy: otherwise shifting a predecessor and its successor in one batch would move the
+    successor twice (once via the cascade, once by its own shift). A task already moved earlier
+    in this batch accumulates from the start that move asked for. Only a task created in this
+    batch has no "before" start, so its base comes from the working copy's schedule.
+    """
+    if task.id in moved and task.constraint_start is not None:
+        return task.constraint_start
+    if any(t.id == task.id for t in before.tasks):
+        return before.task(task.id).start
+    return schedule(plan).task(task.id).start
+
+
+def _apply_one(
+    plan: Plan, op: Operation, created: list[int], moved: list[int], before: ScheduledPlan
+) -> None:
     match op:
         case AddTask():
             new_id = plan.last_id + 1
@@ -203,7 +221,7 @@ def _apply_one(plan: Plan, op: Operation, created: list[int], moved: list[int]) 
                 target = op.start_date
             else:
                 assert op.shift_days is not None
-                target = add_workdays(schedule(plan).task(op.id).start, op.shift_days)
+                target = add_workdays(_shift_base(plan, task, moved, before), op.shift_days)
             task.constraint_start = next_workday(target)
             moved.append(op.id)
         case ClearConstraint():
@@ -219,13 +237,13 @@ def _apply_one(plan: Plan, op: Operation, created: list[int], moved: list[int]) 
             _get(plan, op.successor_id)
             _upsert_dep(plan, op.predecessor_id, op.successor_id, op.lag)
         case RemoveDependency():
-            before = len(plan.dependencies)
+            deps_before = len(plan.dependencies)
             plan.dependencies = [
                 d
                 for d in plan.dependencies
                 if not (d.predecessor_id == op.predecessor_id and d.successor_id == op.successor_id)
             ]
-            if len(plan.dependencies) == before:
+            if len(plan.dependencies) == deps_before:
                 raise OperationError(f"связи {op.predecessor_id} → {op.successor_id} нет")
         case DeleteTask():
             task = _get(plan, op.id)
