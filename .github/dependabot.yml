@@ -36,9 +36,19 @@ updates:
         applies-to: version-updates
         update-types: ["minor", "patch"]
 
-  # deploy/compose.prod.yml and deploy/caddy/compose.yml pin images by digest;
+  # docker-compose.yml (dev), deploy/compose.prod.yml and deploy/caddy/compose.yml
+  # pin images by digest;
   # "docker-compose" (distinct from "docker" above, which covers ./Dockerfile)
   # is the ecosystem that scans compose files themselves.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: "docker-compose"
     directory: "/deploy"
     schedule:
