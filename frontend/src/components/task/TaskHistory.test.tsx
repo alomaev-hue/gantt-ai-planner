@@ -47,6 +47,21 @@ test("shows an empty state when the task has no history yet", async () => {
   expect(await screen.findByText("Изменений пока не было")).toBeInTheDocument();
 });
 
+test("shows the summary for a boundary entry with no changes (import/reset/demo origin)", async () => {
+  vi.mocked(api.taskHistory).mockResolvedValue([
+    {
+      version: 1,
+      source: "import",
+      created_at: "2026-09-24T12:00:00Z",
+      summary: "Задача появилась при импорте плана",
+      changes: [],
+    },
+  ]);
+  renderWithQuery(<TaskHistory taskId={1} version={1} />);
+  expect(await screen.findByText(/Версия 1 · импорт/)).toBeInTheDocument();
+  expect(screen.getByText("Задача появилась при импорте плана")).toBeInTheDocument();
+});
+
 test("change lines are plain text, not a self-focus button (every entry is for the open task)", async () => {
   vi.mocked(api.taskHistory).mockResolvedValue([
     {

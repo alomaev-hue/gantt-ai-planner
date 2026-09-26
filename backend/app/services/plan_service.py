@@ -7,7 +7,7 @@ from typing import Any, Literal
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db import repo
-from app.db.repo import VersionMeta
+from app.db.repo import VersionDiff, VersionMeta
 from app.domain.diff import Change, diff_plans, summarize_changes
 from app.domain.errors import ConfirmationRequired, DomainError
 from app.domain.models import Plan
@@ -21,6 +21,16 @@ from app.services.sessions import hash_token, new_token
 
 Source = Literal["seed", "import", "user", "agent", "mcp", "reset"]
 MCP_WAIT_SECONDS = 10.0
+
+# Sources that REPLACE the whole plan rather than editing it in place. A task's history must
+# never cross this boundary: comparing across it would diff tasks that merely share an id
+# (e.g. "UI-кит и дизайн-система" pre-boundary vs. "Заказ грузового транспорта" post-boundary).
+_BOUNDARY_SOURCES = frozenset({"import", "reset", "seed"})
+_BOUNDARY_SUMMARIES: dict[str, str] = {
+    "import": "Задача появилась при импорте плана",
+    "reset": "Задача появилась при сбросе к демо-плану",
+    "seed": "Задача появилась в демо-плане",
+}
 
 
 @dataclass(frozen=True)
@@ -138,18 +148,27 @@ class PlanService:
     async def task_history(self, session_id: uuid.UUID, task_id: int) -> list[dict[str, Any]]:
         """History of a task (spec §6/§10): every stored version's diff, filtered to changes
         touching `task_id`, newest first. Only versions whose diff actually mentions the task are
-        included — a task that exists but was never edited has an empty (not 404) history."""
+        included — a task that exists but was never edited has an empty (not 404) history.
+
+        Versions with a source in `_BOUNDARY_SOURCES` replace the whole plan, so the walk stops
+        at the first (newest) such version at or before the current one: older versions are not
+        inspected at all, since their diffs compare unrelated tasks that merely share an id. The
+        boundary version itself is surfaced as a single synthetic entry (empty `changes`, a
+        summary explaining where the task came from) when the task exists in its snapshot.
+        """
         async with self.sessionmaker() as db:
             state = await self._state(db, session_id)
             versions = await repo.list_versions_upto(db, session_id, state.version)
         exists_now = any(t.id == task_id for t in state.plan.tasks)
         entries: list[dict[str, Any]] = []
-        found = exists_now
+        boundary: VersionDiff | None = None
         for v in versions:
+            if v.source in _BOUNDARY_SOURCES:
+                boundary = v
+                break
             changes = [c for c in v.diff if c.get("task_id") == task_id]
             if not changes:
                 continue
-            found = True
             entries.append(
                 {
                     "version": v.version_no,
@@ -159,6 +178,23 @@ class PlanService:
                     "changes": changes,
                 }
             )
+        found = exists_now or bool(entries)
+        if boundary is not None:
+            async with self.sessionmaker() as db:
+                boundary_row = await repo.get_version(db, session_id, boundary.version_no)
+            if boundary_row is not None:
+                boundary_plan = Plan.model_validate(boundary_row.snapshot)
+                if any(t.id == task_id for t in boundary_plan.tasks):
+                    found = True
+                    entries.append(
+                        {
+                            "version": boundary.version_no,
+                            "source": boundary.source,
+                            "created_at": boundary.created_at,
+                            "summary": _BOUNDARY_SUMMARIES[boundary.source],
+                            "changes": [],
+                        }
+                    )
         if not found:
             raise NotFound(f"Задача №{task_id} не найдена")
         return entries

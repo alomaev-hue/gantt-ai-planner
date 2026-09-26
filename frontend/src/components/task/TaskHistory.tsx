@@ -25,11 +25,15 @@ function HistoryEntry({ entry }: { entry: TaskHistoryEntry }) {
         <span>{formatRuDateTime(entry.created_at)}</span>
       </div>
       <ul className="mt-1 flex flex-col gap-0.5">
-        {entry.changes.map((change, index) => (
-          <li key={`${change.field}-${index}`} className="text-sm text-foreground">
-            {describeChange(change)}
-          </li>
-        ))}
+        {entry.changes.length === 0 ? (
+          <li className="text-sm text-foreground">{entry.summary}</li>
+        ) : (
+          entry.changes.map((change, index) => (
+            <li key={`${change.field}-${index}`} className="text-sm text-foreground">
+              {describeChange(change)}
+            </li>
+          ))
+        )}
       </ul>
     </li>
   );

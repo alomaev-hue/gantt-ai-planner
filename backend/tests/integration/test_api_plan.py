@@ -1,3 +1,10 @@
+from io import BytesIO
+
+from openpyxl import Workbook
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
 async def test_session_cookie_and_plan(client):
     r = await client.get("/api/plan")
     assert r.status_code == 401 and r.json()["error"]["code"] == "no_session"
@@ -74,15 +81,63 @@ async def test_task_history_lists_edits_newest_first(session_client):
     r = await session_client.get("/api/plan/tasks/1/history")
     assert r.status_code == 200
     body = r.json()
-    assert len(body) == 2
-    assert body[0]["version"] > body[1]["version"]
-    assert all(entry["source"] == "user" for entry in body)
+    # Newest edits first, then the demo-plan boundary entry the task lineage started from.
+    assert len(body) == 3
+    assert body[0]["version"] > body[1]["version"] > body[2]["version"]
+    assert all(entry["source"] == "user" for entry in body[:2])
     assert all(entry["created_at"] for entry in body)
     assert body[0]["changes"][0]["field"] == "name"
     assert body[1]["changes"][0]["field"] == "duration"
-    # untouched task: exists but has no history entries yet, not a 404.
+    assert body[2]["source"] == "seed" and body[2]["changes"] == []
+    # untouched task: exists, never edited, so only the demo-plan boundary entry shows — not a 404.
     r2 = await session_client.get("/api/plan/tasks/2/history")
-    assert r2.status_code == 200 and r2.json() == []
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert len(body2) == 1
+    assert body2[0]["source"] == "seed" and body2[0]["changes"] == []
+
+
+async def test_task_history_stops_at_import_boundary(session_client):
+    # Pre-import edit must not leak into the post-import task's history, even though the
+    # imported task happens to reuse id 1 — it is not the same task.
+    await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "duration": 9}]}
+    )
+    wb = Workbook()
+    for row in [
+        ["Задача", "Описание", "Исполнитель", "Длительность", "Предшественники"],
+        ["A", "", "Олег", 2, None],
+    ]:
+        wb.active.append(row)
+    buf = BytesIO()
+    wb.save(buf)
+    r = await session_client.post(
+        "/api/plan/import",
+        files={"file": ("office.xlsx", buf.getvalue(), XLSX_MIME)},
+        data={"project_start": "2026-10-04"},
+    )
+    assert r.status_code == 200, r.text
+    body = (await session_client.get("/api/plan/tasks/1/history")).json()
+    assert len(body) == 1
+    assert body[0]["source"] == "import" and body[0]["changes"] == []
+    await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "duration": 5}]}
+    )
+    body2 = (await session_client.get("/api/plan/tasks/1/history")).json()
+    assert len(body2) == 2
+    assert body2[0]["source"] == "user" and body2[0]["changes"][0]["field"] == "duration"
+    assert body2[1]["source"] == "import" and body2[1]["changes"] == []
+
+
+async def test_task_history_stops_at_reset_boundary(session_client):
+    await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "duration": 9}]}
+    )
+    r = await session_client.post("/api/plan/reset")
+    assert r.status_code == 200
+    body = (await session_client.get("/api/plan/tasks/1/history")).json()
+    assert len(body) == 1
+    assert body[0]["source"] == "reset" and body[0]["changes"] == []
 
 
 async def test_task_history_shows_agent_source(session_client):
