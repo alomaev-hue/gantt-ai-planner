@@ -3,7 +3,23 @@
 }
 
 gantt-ai-planner.duckdns.org {
-	encode gzip zstd
+	# Explicit type list instead of the default one: the default matches `text/*`, which
+	# includes text/event-stream, and compressing SSE (chat stream, /api/events) can hold
+	# events back in the encoder. Caddy response matchers have no `not`, so list what to
+	# compress rather than what to skip.
+	encode {
+		gzip
+		zstd
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type text/javascript*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type image/svg+xml*
+		}
+	}
 
 	request_body {
 		max_size 5MB
