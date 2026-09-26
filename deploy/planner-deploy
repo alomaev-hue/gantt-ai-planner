@@ -69,18 +69,55 @@ wait_healthy() {
     return 1
 }
 
+compose() {
+    docker compose -f "$COMPOSE_FILE" "$@"
+}
+
+# From the moment .env names the new tag until the new stack is confirmed
+# healthy, ANY exit (a failed command, a failed check, set -e, a signal)
+# restores the previous tag and restarts it. The EXIT trap is the single
+# rollback path, so no failure can leave .env pointing at a tag that was
+# never successfully deployed (the next reboot / `up -d` would start it, and
+# the next deploy would treat it as the rollback target).
+env_written=0
+deployed=0
+finish() {
+    status=$?
+    trap - EXIT
+    if [ "$env_written" -eq 1 ] && [ "$deployed" -eq 0 ]; then
+        echo "planner-deploy: rolling back to '$prev_tag'" >&2
+        set_tag "$prev_tag" || echo "planner-deploy: FAILED to restore IMAGE_TAG in $ENV_FILE" >&2
+        if ! compose up -d; then
+            echo "planner-deploy: rollback 'up -d' failed - manual intervention needed" >&2
+        fi
+        [ "$status" -ne 0 ] || status=1
+    fi
+    exit "$status"
+}
+trap finish EXIT
+
 echo "planner-deploy: deploying '$new_tag' (previous: '$prev_tag')"
-set_tag "$new_tag"
 
-docker compose -f "$COMPOSE_FILE" pull app migrate
-docker compose -f "$COMPOSE_FILE" up -d
-
-if wait_healthy; then
-    echo "planner-deploy: '$new_tag' is healthy"
-    exit 0
+# Pull first, with the tag passed only through the environment (it overrides
+# .env for Compose): if the image is missing or the network fails, .env and
+# the running stack are left exactly as they were.
+if ! IMAGE_TAG="$new_tag" compose pull app migrate; then
+    echo "planner-deploy: pull of '$new_tag' failed; nothing changed (still '$prev_tag')" >&2
+    exit 1
 fi
 
-echo "planner-deploy: '$new_tag' failed health check within ${HEALTH_TIMEOUT}s, rolling back to '$prev_tag'" >&2
-set_tag "$prev_tag"
-docker compose -f "$COMPOSE_FILE" up -d
-exit 1
+set_tag "$new_tag"
+env_written=1
+
+if ! compose up -d; then
+    echo "planner-deploy: 'up -d' with '$new_tag' failed" >&2
+    exit 1
+fi
+
+if ! wait_healthy; then
+    echo "planner-deploy: '$new_tag' failed health check within ${HEALTH_TIMEOUT}s" >&2
+    exit 1
+fi
+
+deployed=1
+echo "planner-deploy: '$new_tag' is healthy"
