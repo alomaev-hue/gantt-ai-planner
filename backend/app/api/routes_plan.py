@@ -1,6 +1,7 @@
 import re
 import uuid
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
@@ -122,6 +123,15 @@ async def import_plan(
         warnings=result.warnings,
     )
     return JSONResponse(ok.model_dump(mode="json"))
+
+
+@router.get("/tasks/{task_id}/history")
+async def task_history(
+    request: Request, task_id: int, session_id: uuid.UUID = Depends(require_session)
+) -> list[dict[str, Any]]:
+    service = get_service(request)
+    entries = await service.task_history(session_id, task_id)
+    return [{**entry, "created_at": entry["created_at"].isoformat()} for entry in entries]
 
 
 @router.get("/export")

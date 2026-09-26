@@ -5,17 +5,20 @@ import { api, ApiError } from "@/api/client";
 import type { Operation } from "@/api/types";
 import { PLAN_KEY, usePlan } from "@/hooks/usePlan";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
+import { useTheme } from "@/hooks/useTheme";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { Toolbar } from "@/components/Toolbar";
 import { TaskModal } from "@/components/task/TaskModal";
 import { ImportDialog } from "@/components/import/ImportDialog";
+import { ResourcePanel } from "@/components/ResourcePanel";
 import type { Zoom } from "@/components/gantt/mapping";
 
 function App() {
   const queryClient = useQueryClient();
   const { data, isLoading, isError, error } = usePlan();
+  const { theme, isDark, setTheme } = useTheme();
   const [zoom, setZoom] = useState<Zoom>("day");
   const [focusedIds, setFocusedIds] = useState<ReadonlySet<number>>(() => new Set());
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
@@ -64,7 +67,15 @@ function App() {
         <h1 className="text-lg font-semibold">Gantt AI Planner</h1>
       </header>
       {data && (
-        <Toolbar plan={data} agentBusy={agentBusy} zoom={zoom} onZoom={setZoom} onImport={() => setImportOpen(true)} />
+        <Toolbar
+          plan={data}
+          agentBusy={agentBusy}
+          zoom={zoom}
+          onZoom={setZoom}
+          onImport={() => setImportOpen(true)}
+          theme={theme}
+          onTheme={setTheme}
+        />
       )}
       <main className="min-h-0 flex-1">
         {isLoading && <div className="p-4 text-muted-foreground">Загрузка плана…</div>}
@@ -76,14 +87,20 @@ function App() {
         {data && (
           <SplitLayout
             left={
-              <GanttView
-                plan={data.plan}
-                zoom={zoom}
-                highlighted={focusedIds}
-                readOnly={agentBusy}
-                onOpenTask={(id) => setOpenTaskId(id)}
-                onApply={onApplyPlanOps}
-              />
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <GanttView
+                    plan={data.plan}
+                    zoom={zoom}
+                    highlighted={focusedIds}
+                    readOnly={agentBusy}
+                    dark={isDark}
+                    onOpenTask={(id) => setOpenTaskId(id)}
+                    onApply={onApplyPlanOps}
+                  />
+                </div>
+                <ResourcePanel plan={data.plan} onOpenTask={(id) => setOpenTaskId(id)} />
+              </div>
             }
             right={
               <ChatPanel onFocusTask={(id) => setFocusedIds(new Set([id]))} agentBusy={agentBusy} />
@@ -96,6 +113,7 @@ function App() {
         <TaskModal
           task={openTask}
           plan={data.plan}
+          version={data.version}
           open={openTaskId != null}
           onOpenChange={(open) => {
             if (!open) setOpenTaskId(null);

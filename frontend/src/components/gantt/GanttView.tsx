@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Gantt, Willow, type IApi } from "@svar-ui/react-gantt";
+import { Gantt, Willow, WillowDark, type IApi } from "@svar-ui/react-gantt";
 import "@svar-ui/react-gantt/all.css";
 import "./gantt.css";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ export function GanttView(props: {
   zoom: Zoom;
   highlighted: ReadonlySet<number>;
   readOnly: boolean;
+  dark?: boolean;
   onOpenTask(id: number): void;
   onApply(ops: Operation[]): Promise<void>;
 }) {
@@ -124,6 +125,10 @@ export function GanttView(props: {
     );
   }, [snapBack]);
 
+  // SVAR ships two skin wrappers (Willow / WillowDark) rather than reacting to CSS custom
+  // properties, so the dark toggle picks the whole component rather than restyling it.
+  const ThemeWrapper = props.dark ? WillowDark : Willow;
+
   return (
     <div
       className="h-full min-h-0"
@@ -133,7 +138,7 @@ export function GanttView(props: {
       }}
     >
       <RuLocale>
-        <Willow>
+        <ThemeWrapper>
           <Gantt
             init={init}
             tasks={tasks}
@@ -147,7 +152,7 @@ export function GanttView(props: {
               unit === "day" && d.toDateString() === new Date().toDateString() ? "gantt-today" : ""
             }
           />
-        </Willow>
+        </ThemeWrapper>
       </RuLocale>
     </div>
   );

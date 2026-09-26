@@ -15,6 +15,17 @@ export function formatRu(value: Date | string): string {
   const d = typeof value === "string" ? parseISODate(value) : value;
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
+// Task history's `created_at` is a full ISO timestamp (unlike the plain "YYYY-MM-DD" dates
+// elsewhere), so it's parsed with `new Date` rather than `parseISODate` and rendered with time.
+export function formatRuDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 export function nextMonday(from: Date): Date {
   const day = from.getDay(); // 0 Sun .. 6 Sat
   return addDays(from, day === 1 ? 0 : (8 - day) % 7);

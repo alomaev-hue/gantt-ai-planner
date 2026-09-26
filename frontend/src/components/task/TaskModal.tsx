@@ -7,6 +7,7 @@ import { PLAN_KEY } from "@/hooks/usePlan";
 import { formatRu } from "@/lib/dates";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { buildTaskOps, formFromTask, rebaseForm, validateTaskForm, type TaskForm } from "./taskOps";
+import { TaskHistory } from "./TaskHistory";
 
 const ASSIGNEE_DATALIST_ID = "task-modal-assignees";
 
@@ -24,6 +25,7 @@ function describeConstraint(task: ScheduledTask, plan: ScheduledPlan): string {
 export function TaskModal({
   task,
   plan,
+  version,
   open,
   onOpenChange,
   onNavigate,
@@ -31,6 +33,7 @@ export function TaskModal({
 }: {
   task: ScheduledTask | null;
   plan: ScheduledPlan;
+  version: number;
   open: boolean;
   onOpenChange(open: boolean): void;
   onNavigate(id: number): void;
@@ -239,6 +242,10 @@ export function TaskModal({
               Пересекается по исполнителю с задачами: {task.overallocated_with.map((id) => `№${id}`).join(", ")}
             </p>
           )}
+
+          <div className="border-t border-border pt-3">
+            <TaskHistory taskId={task.id} version={version} onFocusTask={onNavigate} />
+          </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

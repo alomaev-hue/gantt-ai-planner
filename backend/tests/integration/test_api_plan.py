@@ -62,3 +62,40 @@ async def test_reset_and_delete_session(session_client):
 async def test_healthz(client):
     r = await client.get("/healthz")
     assert r.status_code == 200 and r.json() == {"status": "ok"}
+
+
+async def test_task_history_lists_edits_newest_first(session_client):
+    await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "duration": 6}]}
+    )
+    await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "name": "Новое имя"}]}
+    )
+    r = await session_client.get("/api/plan/tasks/1/history")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 2
+    assert body[0]["version"] > body[1]["version"]
+    assert all(entry["source"] == "user" for entry in body)
+    assert all(entry["created_at"] for entry in body)
+    assert body[0]["changes"][0]["field"] == "name"
+    assert body[1]["changes"][0]["field"] == "duration"
+    # untouched task: exists but has no history entries yet, not a 404.
+    r2 = await session_client.get("/api/plan/tasks/2/history")
+    assert r2.status_code == 200 and r2.json() == []
+
+
+async def test_task_history_shows_agent_source(session_client):
+    async with session_client.stream(
+        "POST", "/api/chat", json={"message": "Перенеси задачу 1 на 1 день"}
+    ) as r:
+        [_ async for _ in r.aiter_text()]
+    r = await session_client.get("/api/plan/tasks/1/history")
+    assert r.status_code == 200
+    body = r.json()
+    assert body and body[0]["source"] == "agent"
+
+
+async def test_task_history_unknown_task_404(session_client):
+    r = await session_client.get("/api/plan/tasks/999/history")
+    assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"

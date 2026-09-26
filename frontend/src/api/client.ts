@@ -4,8 +4,10 @@ import type {
   ImportFailure,
   ImportSuccess,
   McpTokenResponse,
+  MetaResponse,
   Operation,
   PlanResponse,
+  TaskHistoryEntry,
 } from "./types";
 
 export class ApiError extends Error {
@@ -62,6 +64,8 @@ export const api = {
   redo: () => post<PlanResponse>("/api/plan/redo"),
   reset: () => post<PlanResponse>("/api/plan/reset"),
   chatHistory: () => request<ChatMessage[]>("/api/chat/history"),
+  taskHistory: (id: number) => request<TaskHistoryEntry[]>(`/api/plan/tasks/${id}/history`),
+  meta: () => request<MetaResponse>("/api/meta"),
   deleteSession: () => request<void>("/api/session", { method: "DELETE" }),
   createMcpToken: () => post<McpTokenResponse>("/api/mcp-token"),
   revokeMcpToken: () => request<void>("/api/mcp-token", { method: "DELETE" }),

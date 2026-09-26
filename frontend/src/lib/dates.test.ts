@@ -1,4 +1,12 @@
-import { addDays, formatRu, nextMonday, parseISODate, toISODate, workdaysBetweenInclusive } from "./dates";
+import {
+  addDays,
+  formatRu,
+  formatRuDateTime,
+  nextMonday,
+  parseISODate,
+  toISODate,
+  workdaysBetweenInclusive,
+} from "./dates";
 
 test("parse/format keep local calendar date", () => {
   const d = parseISODate("2026-09-21");
@@ -8,6 +16,10 @@ test("parse/format keep local calendar date", () => {
   expect(toISODate(d)).toBe("2026-09-21");
   expect(formatRu("2026-09-21")).toBe("21.09.2026");
   expect(toISODate(addDays(d, 11))).toBe("2026-10-02");
+});
+
+test("formatRuDateTime renders a ru date + time", () => {
+  expect(formatRuDateTime("2026-09-21T15:30:00")).toBe("21.09.2026, 15:30");
 });
 
 test("nextMonday", () => {

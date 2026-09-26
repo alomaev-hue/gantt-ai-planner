@@ -1,18 +1,35 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Download, Link2, MoreVertical, Redo2, RotateCcw, Undo2, Upload } from "lucide-react";
+import { Download, Link2, Monitor, Moon, MoreVertical, Redo2, RotateCcw, Sun, Undo2, Upload } from "lucide-react";
 import { api, ApiError, EXPORT_URL } from "@/api/client";
 import type { PlanResponse } from "@/api/types";
 import { PLAN_KEY } from "@/hooks/usePlan";
+import { useMeta } from "@/hooks/useMeta";
+import type { ThemeMode } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { McpConnectDialog } from "@/components/McpConnectDialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { Zoom } from "@/components/gantt/mapping";
 
 const ZOOM_LABELS: Record<Zoom, string> = { day: "День", week: "Неделя", month: "Месяц" };
 const ZOOM_ORDER: Zoom[] = ["day", "week", "month"];
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Светлая", icon: Sun },
+  { value: "dark", label: "Тёмная", icon: Moon },
+  { value: "system", label: "Как в системе", icon: Monitor },
+];
 
 export function Toolbar({
   plan,
@@ -20,14 +37,19 @@ export function Toolbar({
   zoom,
   onZoom,
   onImport,
+  theme,
+  onTheme,
 }: {
   plan: PlanResponse;
   agentBusy: boolean;
   zoom: Zoom;
   onZoom(zoom: Zoom): void;
   onImport(): void;
+  theme: ThemeMode;
+  onTheme(mode: ThemeMode): void;
 }) {
   const queryClient = useQueryClient();
+  const { data: meta } = useMeta();
   const [resetOpen, setResetOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
@@ -107,8 +129,17 @@ export function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        {meta?.llm_mode === "fake" && (
+          <span
+            title="Ключ Anthropic не задан: чат понимает только примеры команд"
+            className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+          >
+            Демо-режим без LLM
+          </span>
+        )}
+
         {agentBusy && (
-          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
             Агент редактирует план…
           </span>
         )}
@@ -137,6 +168,15 @@ export function Toolbar({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
+            <DropdownMenuLabel>Тема</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={theme} onValueChange={(value) => onTheme(value as ThemeMode)}>
+              {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <DropdownMenuRadioItem key={value} value={value}>
+                  <Icon className="h-4 w-4" /> {label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => setDeleteOpen(true)}>Удалить мои данные</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

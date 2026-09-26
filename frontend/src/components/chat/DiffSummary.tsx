@@ -1,34 +1,7 @@
 import { useState } from "react";
-import type { Change, ChangeField } from "@/api/types";
-import { formatRu } from "@/lib/dates";
+import type { Change } from "@/api/types";
+import { describeChange } from "@/lib/changeFormat";
 import { cn } from "@/lib/utils";
-
-const FIELD_LABELS: Record<ChangeField, string> = {
-  name: "название",
-  description: "описание",
-  assignee: "исполнитель",
-  duration: "длительность",
-  constraint_start: "не раньше",
-  predecessors: "предшественники",
-  start: "начало",
-  end: "окончание",
-  created: "добавлена",
-  deleted: "удалена",
-};
-
-const DATE_FIELDS: ReadonlySet<ChangeField> = new Set(["start", "end", "constraint_start"]);
-
-function formatValue(field: ChangeField, value: Change["before"]): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (DATE_FIELDS.has(field) && typeof value === "string") return formatRu(value);
-  return String(value);
-}
-
-function describeChange(change: Change): string {
-  const label = FIELD_LABELS[change.field];
-  if (change.field === "created" || change.field === "deleted") return label;
-  return `${label} ${formatValue(change.field, change.before)} → ${formatValue(change.field, change.after)}`;
-}
 
 export function DiffSummary({
   summary,

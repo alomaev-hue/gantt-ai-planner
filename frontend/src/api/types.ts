@@ -206,6 +206,27 @@ export interface McpTokenResponse {
   };
 }
 
+// spec §6: version.source, also used as-is by task history entries below.
+export type VersionSource = "seed" | "import" | "user" | "agent" | "mcp" | "reset";
+
+// GET /api/plan/tasks/{id}/history (spec §10, §6: "вычисляется из diff сохранённых версий") —
+// backend/app/services/plan_service.py `task_history`, newest version first.
+export interface TaskHistoryEntry {
+  version: number;
+  source: VersionSource;
+  created_at: string;
+  summary: string;
+  changes: Change[];
+}
+
+// GET /api/meta (added alongside this task by a parallel backend change): exposes whether the
+// LLM is a real Anthropic key or the deterministic fake used when none is configured, so the UI
+// can show a "demo mode" hint instead of silently behaving as if the agent understands anything.
+export interface MetaResponse {
+  llm_mode: "anthropic" | "fake";
+  model: string | null;
+}
+
 // spec §10: unified error envelope `{error: {code, message, details?}}`.
 export interface ApiErrorBody {
   error: {

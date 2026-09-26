@@ -14,7 +14,7 @@ from app.domain.models import Plan
 from app.domain.operations import Operation, apply_operations, requires_confirmation
 from app.domain.scheduler import ScheduledPlan, schedule
 from app.domain.seed import build_demo_plan
-from app.services.errors import AgentBusy, NoSession, NothingToRedo, NothingToUndo
+from app.services.errors import AgentBusy, NoSession, NotFound, NothingToRedo, NothingToUndo
 from app.services.events import EventBus
 from app.services.locks import SessionLocks
 from app.services.sessions import hash_token, new_token
@@ -134,6 +134,34 @@ class PlanService:
             can_undo=undo_target(meta, session.current_version) is not None,
             can_redo=redo_target(meta, session.current_version) is not None,
         )
+
+    async def task_history(self, session_id: uuid.UUID, task_id: int) -> list[dict[str, Any]]:
+        """History of a task (spec §6/§10): every stored version's diff, filtered to changes
+        touching `task_id`, newest first. Only versions whose diff actually mentions the task are
+        included — a task that exists but was never edited has an empty (not 404) history."""
+        async with self.sessionmaker() as db:
+            state = await self._state(db, session_id)
+            versions = await repo.list_versions_upto(db, session_id, state.version)
+        exists_now = any(t.id == task_id for t in state.plan.tasks)
+        entries: list[dict[str, Any]] = []
+        found = exists_now
+        for v in versions:
+            changes = [c for c in v.diff if c.get("task_id") == task_id]
+            if not changes:
+                continue
+            found = True
+            entries.append(
+                {
+                    "version": v.version_no,
+                    "source": v.source,
+                    "created_at": v.created_at,
+                    "summary": v.summary,
+                    "changes": changes,
+                }
+            )
+        if not found:
+            raise NotFound(f"Задача №{task_id} не найдена")
+        return entries
 
     async def _guard_busy(self, session_id: uuid.UUID, source: Source) -> None:
         if source == "agent" or not self.locks.is_busy(session_id):
