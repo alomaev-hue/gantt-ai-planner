@@ -24,6 +24,14 @@ export class ApiError extends Error {
   }
 }
 
+// Query retry policy (QueryClient default): a 4xx won't change on retry — and retrying a 429
+// rate limit (e.g. the per-IP new-session limit) only hammers the server while the UI keeps
+// showing "loading" instead of the server's message. Server/network errors: up to 3 retries.
+export function retryUnlessClientError(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+  return failureCount < 3;
+}
+
 // The backend names the file after this date (its own clock is UTC, a day off near midnight).
 export const exportUrl = (now: Date = new Date()) => `/api/plan/export?today=${toISODate(now)}`;
 

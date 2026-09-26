@@ -1,4 +1,4 @@
-import { api } from "./client";
+import { ApiError, api, retryUnlessClientError } from "./client";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -64,4 +64,14 @@ test("mutations send the plan version they were made against", async () => {
     { expected_version: 3 },
     { expected_version: null },
   ]);
+});
+
+test("queries don't retry client errors (a 429 rate limit must surface, not spin)", () => {
+  const limited = new ApiError(429, "rate_limited", "Слишком много новых сессий");
+  expect(retryUnlessClientError(0, limited)).toBe(false);
+  expect(retryUnlessClientError(0, new ApiError(404, "not_found", "x"))).toBe(false);
+  // Server errors and network failures still get the usual three retries.
+  expect(retryUnlessClientError(0, new ApiError(502, "http_error", "x"))).toBe(true);
+  expect(retryUnlessClientError(2, new TypeError("Failed to fetch"))).toBe(true);
+  expect(retryUnlessClientError(3, new TypeError("Failed to fetch"))).toBe(false);
 });

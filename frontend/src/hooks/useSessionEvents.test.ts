@@ -1,4 +1,4 @@
-import { parsePlanChanged } from "./useSessionEvents";
+import { parsePlanChanged, reconnectDelay } from "./useSessionEvents";
 
 test("parses changed_task_ids from the plan_changed payload", () => {
   expect(parsePlanChanged(JSON.stringify({ type: "plan_changed", version: 3, changed_task_ids: [1, 2] }))).toEqual([
@@ -35,4 +35,10 @@ test("shouldRefetchPlan skips only the event for the version already in the cach
   expect(shouldRefetchPlan(5, 4)).toBe(true); // someone else's undo: lower version, still new
   expect(shouldRefetchPlan(undefined, 6)).toBe(true);
   expect(shouldRefetchPlan(6, null)).toBe(true);
+});
+
+test("reconnect delay backs off exponentially and is capped at a minute", () => {
+  expect([0, 1, 2, 3, 4, 5, 6, 10].map(reconnectDelay)).toEqual([
+    2000, 4000, 8000, 16000, 32000, 60000, 60000, 60000,
+  ]);
 });
