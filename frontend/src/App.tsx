@@ -10,6 +10,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
 import { GanttLegend } from "@/components/gantt/GanttLegend";
+import { ProjectDates } from "@/components/gantt/ProjectDates";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { Toolbar } from "@/components/Toolbar";
 import { TaskModal } from "@/components/task/TaskModal";
@@ -92,6 +93,7 @@ function App() {
           <SplitLayout
             left={
               <div className="flex h-full min-h-0 flex-col">
+                <ProjectDates start={data.plan.project_start} end={data.plan.project_end} />
                 <div className="min-h-0 flex-1 overflow-hidden">
                   <GanttView
                     plan={data.plan}
