@@ -12,7 +12,10 @@ const SOURCE_LABELS: Record<VersionSource, string> = {
   seed: "демо",
 };
 
-function HistoryEntry({ entry, onFocusTask }: { entry: TaskHistoryEntry; onFocusTask(id: number): void }) {
+// Every change here is for the task whose modal is already open, so a click-to-focus affordance
+// (as DiffSummary has, for a chat turn that can touch *other* tasks) would just be a no-op
+// "navigate to the task you're already looking at" — plain text lines only (spec review round 1).
+function HistoryEntry({ entry }: { entry: TaskHistoryEntry }) {
   return (
     <li className="rounded-md border border-border p-2">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -22,37 +25,17 @@ function HistoryEntry({ entry, onFocusTask }: { entry: TaskHistoryEntry; onFocus
         <span>{formatRuDateTime(entry.created_at)}</span>
       </div>
       <ul className="mt-1 flex flex-col gap-0.5">
-        {entry.changes.map((change, index) => {
-          const focusable = change.field !== "deleted";
-          return (
-            <li key={`${change.field}-${index}`}>
-              <button
-                type="button"
-                disabled={!focusable}
-                className="text-left text-sm text-foreground hover:underline disabled:no-underline"
-                onClick={() => {
-                  if (focusable) onFocusTask(change.task_id);
-                }}
-              >
-                {describeChange(change)}
-              </button>
-            </li>
-          );
-        })}
+        {entry.changes.map((change, index) => (
+          <li key={`${change.field}-${index}`} className="text-sm text-foreground">
+            {describeChange(change)}
+          </li>
+        ))}
       </ul>
     </li>
   );
 }
 
-export function TaskHistory({
-  taskId,
-  version,
-  onFocusTask,
-}: {
-  taskId: number;
-  version: number;
-  onFocusTask(id: number): void;
-}) {
+export function TaskHistory({ taskId, version }: { taskId: number; version: number }) {
   const { data, isLoading, isError } = useTaskHistory(taskId, version);
 
   return (
@@ -64,7 +47,7 @@ export function TaskHistory({
       {data && data.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {data.map((entry) => (
-            <HistoryEntry key={entry.version} entry={entry} onFocusTask={onFocusTask} />
+            <HistoryEntry key={entry.version} entry={entry} />
           ))}
         </ul>
       )}

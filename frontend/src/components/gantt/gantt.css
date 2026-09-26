@@ -1,10 +1,21 @@
 /*
- * SVAR renders a task bar as `.wx-bar.wx-<type>` where `<type>` is the raw `taskTypes` id
- * (confirmed against @svar-ui/react-gantt's own demos: summary -> `wx-bar wx-summary`,
- * milestone -> `wx-bar wx-milestone`). Our custom types are "task" | "critical" | "changed".
+ * SVAR only prefixes a bar's type class with `wx-` when the type is one of its own built-ins
+ * ("task" | "milestone" | "summary"); any *other* `taskTypes` id (ours: "critical" | "changed" |
+ * "conflict") is appended as a second, bare (unprefixed) class instead — verified against the
+ * installed @svar-ui/react-gantt 2.7.3 bundle and against the real rendered DOM: a critical bar
+ * comes out as `class="wx-bar wx-task critical"`, not `wx-bar wx-critical` as an earlier version
+ * of this file assumed (that selector never matched anything, so every bar rendered as plain
+ * blue "task" regardless of `is_critical`/`overallocated_with`).
+ *
+ * Every one of our types still also carries the base "wx-task" class (see `y()` in SVAR's own
+ * bundle), and its shipped CSS sets that base color via `.wx-task:not(.wx-split).wx-<hash>`
+ * (three classes' worth of specificity — confirmed in node_modules/@svar-ui/react-gantt/dist/
+ * index.css). A plain two-class `.wx-bar.critical` selector loses to that regardless of import
+ * order, so the color rules below need `!important` to actually win.
  */
 :root {
   --gantt-critical: #e5484d;
+  --gantt-conflict: #f5a524;
   --gantt-changed: #aa3bff;
   --gantt-changed-bg: rgba(170, 59, 255, 0.16);
   --gantt-today: rgba(170, 59, 255, 0.08);
@@ -12,19 +23,25 @@
 
 .dark {
   --gantt-critical: #ff6369;
+  --gantt-conflict: #fbbf24;
   --gantt-changed: #c084fc;
   --gantt-changed-bg: rgba(192, 132, 252, 0.2);
   --gantt-today: rgba(192, 132, 252, 0.12);
 }
 
-.wx-bar.wx-critical {
-  background: var(--gantt-critical);
-  border-color: var(--gantt-critical);
+.wx-bar.critical {
+  background: var(--gantt-critical) !important;
+  border-color: var(--gantt-critical) !important;
 }
 
-.wx-bar.wx-changed {
-  background: var(--gantt-changed);
-  border-color: var(--gantt-changed);
+.wx-bar.conflict {
+  background: var(--gantt-conflict) !important;
+  border-color: var(--gantt-conflict) !important;
+}
+
+.wx-bar.changed {
+  background: var(--gantt-changed) !important;
+  border-color: var(--gantt-changed) !important;
   animation: gantt-changed-pulse 2s ease-in-out 1;
 }
 

@@ -31,7 +31,7 @@ test("lists entries newest first with ru source labels and change lines", async 
     },
   ]);
 
-  renderWithQuery(<TaskHistory taskId={1} version={3} onFocusTask={vi.fn()} />);
+  renderWithQuery(<TaskHistory taskId={1} version={3} />);
 
   expect(await screen.findByText(/Версия 3 · агент/)).toBeInTheDocument();
   expect(screen.getByText(/Версия 2 · вы/)).toBeInTheDocument();
@@ -43,12 +43,11 @@ test("lists entries newest first with ru source labels and change lines", async 
 
 test("shows an empty state when the task has no history yet", async () => {
   vi.mocked(api.taskHistory).mockResolvedValue([]);
-  renderWithQuery(<TaskHistory taskId={2} version={1} onFocusTask={vi.fn()} />);
+  renderWithQuery(<TaskHistory taskId={2} version={1} />);
   expect(await screen.findByText("Изменений пока не было")).toBeInTheDocument();
 });
 
-test("clicking a change line focuses that task", async () => {
-  const onFocusTask = vi.fn();
+test("change lines are plain text, not a self-focus button (every entry is for the open task)", async () => {
   vi.mocked(api.taskHistory).mockResolvedValue([
     {
       version: 2,
@@ -58,8 +57,8 @@ test("clicking a change line focuses that task", async () => {
       changes: [{ task_id: 1, task_name: "Дизайн", field: "assignee", before: "Олег", after: "Аня" }],
     },
   ]);
-  renderWithQuery(<TaskHistory taskId={1} version={2} onFocusTask={onFocusTask} />);
+  renderWithQuery(<TaskHistory taskId={1} version={2} />);
   const line = await screen.findByText("исполнитель Олег → Аня");
-  line.click();
-  expect(onFocusTask).toHaveBeenCalledWith(1);
+  expect(line.tagName).toBe("LI");
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });

@@ -244,7 +244,7 @@ export function TaskModal({
           )}
 
           <div className="border-t border-border pt-3">
-            <TaskHistory taskId={task.id} version={version} onFocusTask={onNavigate} />
+            <TaskHistory taskId={task.id} version={version} />
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

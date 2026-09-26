@@ -8,6 +8,7 @@ import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { useTheme } from "@/hooks/useTheme";
 import { SplitLayout } from "@/components/SplitLayout";
 import { GanttView } from "@/components/gantt/GanttView";
+import { GanttLegend } from "@/components/gantt/GanttLegend";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { Toolbar } from "@/components/Toolbar";
 import { TaskModal } from "@/components/task/TaskModal";
@@ -99,6 +100,7 @@ function App() {
                     onApply={onApplyPlanOps}
                   />
                 </div>
+                <GanttLegend />
                 <ResourcePanel plan={data.plan} onOpenTask={(id) => setOpenTaskId(id)} />
               </div>
             }

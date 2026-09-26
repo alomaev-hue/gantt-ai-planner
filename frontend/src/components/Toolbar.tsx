@@ -73,18 +73,22 @@ export function Toolbar({
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+        title="Загрузить Excel"
+        aria-label="Загрузить Excel"
+        className="inline-flex items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm hover:bg-accent sm:px-3"
         onClick={onImport}
       >
-        <Upload className="h-4 w-4" /> Загрузить Excel
+        <Upload className="h-4 w-4" /> <span className="hidden sm:inline">Загрузить Excel</span>
       </button>
 
       <a
         href={EXPORT_URL}
         download
-        className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+        title="Экспорт"
+        aria-label="Экспорт"
+        className="inline-flex items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm hover:bg-accent sm:px-3"
       >
-        <Download className="h-4 w-4" /> Экспорт
+        <Download className="h-4 w-4" /> <span className="hidden sm:inline">Экспорт</span>
       </a>
 
       <div className="mx-1 h-5 w-px bg-border" />
@@ -146,19 +150,23 @@ export function Toolbar({
 
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent"
+          title="Подключить MCP"
+          aria-label="Подключить MCP"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm hover:bg-accent sm:px-3"
           onClick={() => setMcpOpen(true)}
         >
-          <Link2 className="h-4 w-4" /> Подключить MCP
+          <Link2 className="h-4 w-4" /> <span className="hidden sm:inline">Подключить MCP</span>
         </button>
 
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-sm hover:bg-accent disabled:opacity-40"
+          title="Сбросить к демо"
+          aria-label="Сбросить к демо"
+          className="inline-flex items-center gap-1.5 rounded-md border border-input px-2 py-1.5 text-sm hover:bg-accent disabled:opacity-40 sm:px-3"
           disabled={busy}
           onClick={() => setResetOpen(true)}
         >
-          <RotateCcw className="h-4 w-4" /> Сбросить к демо
+          <RotateCcw className="h-4 w-4" /> <span className="hidden sm:inline">Сбросить к демо</span>
         </button>
 
         <DropdownMenu>

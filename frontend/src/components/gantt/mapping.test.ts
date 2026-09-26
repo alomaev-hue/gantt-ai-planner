@@ -18,7 +18,19 @@ test("tasks map with exclusive end and types", () => {
   expect(a.start.getDate()).toBe(21);
   expect(a.end.getDate()).toBe(24); // inclusive 23 + 1
   expect(a.type).toBe("critical");
+  expect(a.slack).toBe(0);
   expect(b.type).toBe("changed");
+  expect(b.slack).toBe(1);
+});
+
+test("an overloaded, non-critical task not currently highlighted maps to the conflict type", () => {
+  const overloaded: ScheduledPlan = {
+    ...plan,
+    tasks: [{ ...plan.tasks[1], id: 3, is_critical: false, overallocated_with: [4] }],
+  };
+  const [t] = toSvarTasks(overloaded, new Set());
+  expect(t.type).toBe("conflict");
+  expect(t.conflict).toBe(true);
 });
 
 test("links are finish-to-start", () => {

@@ -5,21 +5,32 @@ import type { IScaleConfig } from "@svar-ui/react-gantt";
 export type Zoom = "day" | "week" | "month";
 
 export interface SvarTask {
-  id: number; text: string; start: Date; end: Date; type: "task" | "critical" | "changed";
-  progress: number; assignee: string; workDays: number; conflict: boolean;
+  id: number; text: string; start: Date; end: Date; type: "task" | "critical" | "changed" | "conflict";
+  progress: number; assignee: string; workDays: number; slack: number; conflict: boolean;
 }
 export interface SvarLink { id: number; source: number; target: number; type: "e2s" }
 
+// A task can be critical *and* overloaded at once; `type` only carries one value, so a bar's
+// visual state is picked by priority: a just-changed highlight always wins (it's transient and
+// most relevant right after an edit), then the critical path (drives the whole project's
+// end date), then a plain resourcing conflict.
 export function toSvarTasks(plan: ScheduledPlan, highlighted: ReadonlySet<number>): SvarTask[] {
   return plan.tasks.map((t) => ({
     id: t.id,
     text: t.name,
     start: parseISODate(t.start),
     end: addDays(parseISODate(t.end), 1),
-    type: highlighted.has(t.id) ? "changed" : t.is_critical ? "critical" : "task",
+    type: highlighted.has(t.id)
+      ? "changed"
+      : t.is_critical
+        ? "critical"
+        : t.overallocated_with.length > 0
+          ? "conflict"
+          : "task",
     progress: 0,
     assignee: t.assignee ?? "",
     workDays: t.duration,
+    slack: t.slack,
     conflict: t.overallocated_with.length > 0,
   }));
 }
