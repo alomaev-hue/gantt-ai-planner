@@ -4,9 +4,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import "./index.css";
 import App from "./App.tsx";
-import { ensureSession } from "./api/client";
+import { ensureSession, retryUnlessClientError } from "./api/client";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: retryUnlessClientError } } });
 
 // Establish the session before anything fetches. Otherwise, on a first visit the plan query,
 // the chat history and the EventSource all start with a 401 (which the browser logs as console

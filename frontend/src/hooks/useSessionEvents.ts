@@ -3,7 +3,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ensureSession } from "@/api/client";
 import { cachedPlanVersion, PLAN_KEY } from "./usePlan";
 
-const RECONNECT_DELAY_MS = 2000;
+const RECONNECT_BASE_MS = 2000;
+const RECONNECT_MAX_MS = 60_000;
+
+// Delay before reconnect attempt number `attempt` (0-based): 2s, 4s, 8s … capped at a minute.
+export function reconnectDelay(attempt: number): number {
+  return Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
+}
 
 interface AgentStatusPayload {
   busy?: boolean;
@@ -57,8 +63,11 @@ export function parsePlanChanged(data: string): number[] {
 // Opens the session-wide live event stream (GET /api/events): `agent_status` toggles the busy
 // flag surfaced here, `plan_changed` invalidates the plan query and reports the ids the change
 // touched (so the Gantt can pulse them — this fires for every source: agent, user, mcp, undo,
-// not just the tab that made the change; import/reset report none). On a stream error it closes, re-establishes the
-// session, and reconnects after a short delay.
+// not just the tab that made the change; import/reset report none). On a stream error it closes
+// and, after a growing delay, re-establishes the session, refetches the plan (events may have
+// been missed) and reconnects. If the session can't be re-established (server down, per-IP
+// session limit) it just waits longer: refetching then would restart the plan query and hide its
+// error behind "loading", and a fixed short delay would hammer the server.
 export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agentBusy: boolean } {
   const queryClient = useQueryClient();
   const [agentBusy, setAgentBusy] = useState(false);
@@ -95,23 +104,36 @@ export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agen
       es.removeEventListener("plan_changed", handlePlanChanged);
     };
 
+    let attempt = 0;
+
+    const scheduleReconnect = () => {
+      reconnectTimer = setTimeout(() => {
+        ensureSession().then(
+          () => {
+            if (stopped) return;
+            void queryClient.invalidateQueries({ queryKey: PLAN_KEY });
+            connect();
+          },
+          () => {
+            if (!stopped) scheduleReconnect();
+          },
+        );
+      }, reconnectDelay(attempt++));
+    };
+
     const connect = () => {
       if (stopped) return;
       const es = new EventSource("/api/events");
       source = es;
       es.addEventListener("agent_status", handleAgentStatus);
       es.addEventListener("plan_changed", handlePlanChanged);
+      es.onopen = () => {
+        attempt = 0;
+      };
       es.onerror = () => {
         detach(es);
         es.close();
-        if (stopped) return;
-        void ensureSession().catch(() => {
-          /* best effort; we reconnect regardless */
-        });
-        reconnectTimer = setTimeout(() => {
-          void queryClient.invalidateQueries({ queryKey: PLAN_KEY });
-          connect();
-        }, RECONNECT_DELAY_MS);
+        if (!stopped) scheduleReconnect();
       };
     };
 

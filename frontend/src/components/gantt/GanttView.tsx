@@ -8,7 +8,7 @@ import { ZOOM_PRESETS, closestTaskId, toSvarLinks, toSvarTasks, type Zoom } from
 import { interpretBarChange, linkToOperation } from "./interactions";
 import { RuLocale } from "./locale";
 import type { Operation, ScheduledPlan } from "@/api/types";
-import { formatRu, addDays, parseISODate, toISODate } from "@/lib/dates";
+import { formatRu, addDays, parseISODate } from "@/lib/dates";
 
 const TASK_TYPES = [
   { id: "task", label: "Задача" },
@@ -149,13 +149,12 @@ export function GanttView(props: {
     setApi(api);
     disableCompactMode(api);
 
-    // First-load convenience: scroll the timeline to today, or to the project's start if today
-    // falls outside the plan's own range (a demo plan scheduled in the past/future would
-    // otherwise open scrolled to whatever SVAR's default is, usually the very first task).
+    // First load opens at the project's start (one day of margin before it). Scrolling to today
+    // instead pushed an ongoing plan's first weeks off-screen: the top rows looked empty and bars
+    // started cut off at the left edge. The demo plan starts two weeks before today (spec), so on
+    // a desktop-width chart the "today" line is on this first screen too.
     const { plan } = handlers.current;
-    const todayIso = toISODate(new Date());
-    const inRange = todayIso >= plan.project_start && todayIso <= plan.project_end;
-    api.exec("scroll-chart", { date: parseISODate(inRange ? todayIso : plan.project_start) });
+    api.exec("scroll-chart", { date: addDays(parseISODate(plan.project_start), -1) });
 
     // `select-task` also fires on keyboard grid navigation, so opening the task modal from it
     // would pop the modal while the user is just arrowing through rows. Instead, a real pointer
