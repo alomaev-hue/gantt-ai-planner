@@ -1,3 +1,4 @@
+import zipfile
 from datetime import date, datetime
 from io import BytesIO
 
@@ -181,3 +182,53 @@ def test_too_many_tasks_keeps_previously_collected_errors():
     assert not res.ok
     assert any("500" in e.message for e in res.errors)
     assert any(e.row == 2 for e in res.errors)
+
+
+def test_zip_bomb_is_rejected_before_inflating(monkeypatch):
+    """A member that declares a huge uncompressed size but compresses to almost
+    nothing (e.g. megabytes of repeated zero bytes) must be rejected from the zip
+    central directory alone — never decompressed, never handed to openpyxl.
+    """
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("xl/worksheets/sheet1.xml", b"0" * (25 * 1024 * 1024))
+
+    # Guard against a regression that would defeat the point of this test: if the
+    # fix ever starts reading a member's actual (decompressed) bytes to decide
+    # whether to reject it, fail loudly instead of silently inflating 25 MB.
+    monkeypatch.setattr(
+        zipfile.ZipExtFile, "read", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+
+    res = parse_plan_xlsx(buf.getvalue(), MON)
+    assert not res.ok
+    assert "большой" in res.errors[0].message
+
+
+def test_zip_with_too_many_entries_is_rejected():
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i in range(1001):
+            zf.writestr(f"member{i}.xml", "x")
+    res = parse_plan_xlsx(buf.getvalue(), MON)
+    assert not res.ok
+    assert "большой" in res.errors[0].message
+
+
+def test_sheet_with_too_many_non_empty_rows_is_rejected():
+    rows = [HEADER] + [[f"T{i}", "", None, 1, None] for i in range(600)]
+    res = parse_plan_xlsx(xlsx(rows), MON)
+    assert not res.ok
+    assert any("лимит строк" in e.message for e in res.errors)
+
+
+def test_sheet_with_too_many_total_rows_is_rejected_even_when_mostly_blank():
+    """A "sparse" row bomb: almost all rows are blank (so the non-empty-row budget
+    is never hit), but the sheer number of rows scanned must still be capped —
+    otherwise a sheet declaring millions of rows could force a very long, mostly
+    wasted scan even though it contains only a couple of real tasks.
+    """
+    rows = [HEADER, ["A", "", None, 1, None]] + [[None] * 5 for _ in range(5100)]
+    res = parse_plan_xlsx(xlsx(rows), MON)
+    assert not res.ok
+    assert any("лимит строк" in e.message for e in res.errors)

@@ -18,6 +18,20 @@ from app.domain.scheduler import topological_order
 from app.excel.headers import match_column
 
 LIMITS = {"name": 200, "description": 2000, "assignee": 100}
+
+# .xlsx is itself a zip archive: a crafted file can be a few KB compressed but
+# inflate to gigabytes (a "zip bomb"), or declare a sheet with millions of rows to
+# make openpyxl's row iterator (and any code eagerly materializing it) spin/allocate
+# for a very long time even though almost all of those rows are blank. Both are
+# rejected before/while parsing rather than relying on the process simply running
+# out of memory or time.
+MAX_ZIP_ENTRIES = 1000
+MAX_ZIP_UNCOMPRESSED_TOTAL_BYTES = 20 * 1024 * 1024  # 20 MB
+MAX_ZIP_MEMBER_RATIO = 200
+MAX_ZIP_MEMBER_UNCOMPRESSED_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_TOTAL_ROWS_SCANNED = 5000
+MAX_NON_EMPTY_ROWS_SCANNED = 30 + MAX_TASKS  # header-search budget + data-row budget
+TOO_LARGE_MESSAGE = "Файл слишком большой после распаковки"
 _DURATION_RE = re.compile(
     r"^(\d+(?:[.,]\d+)?)\s*(д|дн|дня|дней|день|d|day|days|н|нед|недел[яьи]|w|wk|week|weeks)?\.?$"
 )
@@ -89,38 +103,84 @@ def _short(exc: ValidationError) -> str:
     return "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
 
 
+def _zip_bomb_issue(data: bytes) -> ImportIssue | None:
+    """Inspect the raw zip container's central directory (cheap: no member is ever
+    decompressed) and reject anything whose *declared* decompressed size is
+    implausible for a plan spreadsheet, before openpyxl inflates it for real.
+    """
+    try:
+        with zipfile.ZipFile(BytesIO(data)) as zf:
+            infos = zf.infolist()
+            if len(infos) > MAX_ZIP_ENTRIES:
+                return ImportIssue(row=None, message=TOO_LARGE_MESSAGE)
+            total_uncompressed = 0
+            for info in infos:
+                total_uncompressed += info.file_size
+                if (
+                    info.file_size > MAX_ZIP_MEMBER_UNCOMPRESSED_BYTES
+                    and info.compress_size > 0
+                    and info.file_size / info.compress_size > MAX_ZIP_MEMBER_RATIO
+                ):
+                    return ImportIssue(row=None, message=TOO_LARGE_MESSAGE)
+            if total_uncompressed > MAX_ZIP_UNCOMPRESSED_TOTAL_BYTES:
+                return ImportIssue(row=None, message=TOO_LARGE_MESSAGE)
+    except zipfile.BadZipFile:
+        return None  # not a valid zip at all; load_workbook() reports the real error
+    return None
+
+
 def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
     errors: list[ImportIssue] = []
     warnings: list[ImportIssue] = []
+    bomb_issue = _zip_bomb_issue(data)
+    if bomb_issue is not None:
+        return _fail([bomb_issue], [])
     try:
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
     except (zipfile.BadZipFile, InvalidFileException, KeyError, OSError, ValueError):
         return _fail([ImportIssue(row=None, message="Файл не является корректным .xlsx")], [])
     ws = wb.worksheets[0]
-    rows = [(i, list(r)) for i, r in enumerate(ws.iter_rows(values_only=True), start=1)]
-    wb.close()
-
-    header_row: int | None = None
-    columns: dict[str, int] = {}
-    for row_no, values in rows[:30]:
-        mapped = {key: idx for idx, v in enumerate(values) if (key := match_column(v))}
-        if "name" in mapped:
-            header_row, columns = row_no, mapped
-            break
-    if header_row is None or "duration" not in columns:
-        missing = "«Задача»" if header_row is None else "«Длительность»"
-        return _fail(
-            [ImportIssue(row=None, message=f"Не найдена обязательная колонка {missing}")], []
-        )
 
     def cell(values: list[Any], key: str) -> Any:
         idx = columns.get(key)
         return values[idx] if idx is not None and idx < len(values) else None
 
+    header_row: int | None = None
+    columns: dict[str, int] = {}
     raw_tasks: list[dict[str, Any]] = []
-    for row_no, values in rows:
-        if row_no <= header_row or all(_text(v) == "" for v in values):
+    total_rows_seen = 0
+    non_empty_rows_seen = 0
+    too_many_rows = False
+
+    # A single lazy pass over ws.iter_rows(): never materializes the whole sheet
+    # (a huge but mostly-blank sheet would otherwise force allocating a giant list
+    # up front), and bails out the moment either row budget is blown.
+    for row_no, values_tuple in enumerate(ws.iter_rows(values_only=True), start=1):
+        total_rows_seen += 1
+        if total_rows_seen > MAX_TOTAL_ROWS_SCANNED:
+            too_many_rows = True
+            break
+        values = list(values_tuple)
+        is_empty = all(_text(v) == "" for v in values)
+
+        if header_row is None:
+            if row_no > 30:
+                break  # header search exhausted; reported below as a missing column
+            if not is_empty:
+                mapped = {key: idx for idx, v in enumerate(values) if (key := match_column(v))}
+                if "name" in mapped:
+                    header_row, columns = row_no, mapped
+                    if "duration" not in columns:
+                        break  # reported below; no point scanning data rows further
             continue
+
+        if is_empty:
+            continue
+        non_empty_rows_seen += 1
+        if non_empty_rows_seen > MAX_NON_EMPTY_ROWS_SCANNED:
+            too_many_rows = True
+            break
+
         name = _text(cell(values, "name"))
         if not name:
             errors.append(ImportIssue(row=row_no, message="Пустое название задачи"))
@@ -154,6 +214,18 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
                 )
             )
         raw_tasks.append(item)
+
+    wb.close()
+
+    if too_many_rows:
+        return _fail(
+            [ImportIssue(row=None, message="Файл слишком большой (превышен лимит строк)")], []
+        )
+    if header_row is None or "duration" not in columns:
+        missing = "«Задача»" if header_row is None else "«Длительность»"
+        return _fail(
+            [ImportIssue(row=None, message=f"Не найдена обязательная колонка {missing}")], []
+        )
 
     if not raw_tasks and not errors:
         return _fail([ImportIssue(row=None, message="В файле нет задач")], warnings)
