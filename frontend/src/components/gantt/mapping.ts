@@ -41,6 +41,14 @@ export function toSvarLinks(plan: ScheduledPlan): SvarLink[] {
   return plan.dependencies.map((d, i) => ({ id: i + 1, source: d.predecessor_id, target: d.successor_id, type: "e2s" }));
 }
 
+// Browsers fire `click` after any press + release on the same element — including the end of a
+// bar drag or resize. Such a click must not open the task modal on top of the change the user
+// just made, so a pointer that moved more than a few pixels since pointerdown isn't a click.
+const DRAG_CLICK_THRESHOLD_PX = 4;
+export function isDragEnd(down: { x: number; y: number } | null, up: { x: number; y: number }): boolean {
+  return down != null && Math.hypot(up.x - down.x, up.y - down.y) > DRAG_CLICK_THRESHOLD_PX;
+}
+
 // SVAR (@svar-ui/lib-dom `locate`) marks both grid rows and gantt bars with a `data-id`
 // attribute holding the task id. We use it to open the task modal only on a genuine pointer
 // click (bubbling up from the clicked row/bar to our own container's onClick), instead of
