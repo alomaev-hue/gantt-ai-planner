@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/api/client";
+import { api, ApiError } from "@/api/client";
 import { streamChat } from "@/api/chatStream";
 import type { Change, ChatMessage } from "@/api/types";
 import { PLAN_KEY } from "./usePlan";
@@ -103,7 +103,13 @@ export function useChat(): {
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Не удалось отправить сообщение");
+        // ApiError messages are ours (Russian, user-facing); anything else is a browser error
+        // such as the stream dying mid-answer ("network error") — don't show that text.
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Связь с сервером прервалась. Проверьте подключение и отправьте сообщение ещё раз.",
+        );
       } finally {
         setStreaming(null);
         abortRef.current = null;

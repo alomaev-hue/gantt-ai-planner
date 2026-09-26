@@ -75,3 +75,17 @@ test("queries don't retry client errors (a 429 rate limit must surface, not spin
   expect(retryUnlessClientError(2, new TypeError("Failed to fetch"))).toBe(true);
   expect(retryUnlessClientError(3, new TypeError("Failed to fetch"))).toBe(false);
 });
+
+test("a network failure becomes a Russian, user-facing error (not the browser's 'Failed to fetch')", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+  const err = await api.getPlan().catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ApiError);
+  expect((err as ApiError).code).toBe("network_error");
+  expect((err as ApiError).message).toMatch(/Нет связи с сервером/);
+});
+
+test("an aborted request stays an AbortError (callers ignore it)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new DOMException("aborted", "AbortError"); }));
+  const err = await api.getPlan().catch((e: unknown) => e);
+  expect((err as Error).name).toBe("AbortError");
+});

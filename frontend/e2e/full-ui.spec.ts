@@ -1,5 +1,6 @@
-// Full UI run against a live deployment (real LLM) — opt-in, skipped unless E2E_LIVE=1:
-//   E2E_LIVE=1 E2E_BASE_URL=https://gantt-ai-planner.duckdns.org npx playwright test -c e2e/playwright.config.ts e2e/full-ui.live.spec.ts
+// Full UI run. In CI it runs against the e2e stack (fake LLM); it can also be pointed at a live
+// deployment (real LLM):
+//   E2E_BASE_URL=https://gantt-ai-planner.duckdns.org npx playwright test -c e2e/playwright.config.ts e2e/full-ui.spec.ts
 // Clicks through every control and checks each change three ways: the UI (date caption, every
 // grid row, bar colors, «Загрузка») against GET /api/plan, the whole schedule against an
 // independent re-derivation (durations, FS deps + lag, «не раньше», project end, critical =
@@ -13,7 +14,6 @@ import { expect, test, type Page } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SAMPLE = path.resolve(__dirname, "../../examples/sample-plan.xlsx");
-const OUT = process.env.LIVE_OUT ?? ".";
 
 type Task = { id: number; name: string; description: string; assignee: string | null; duration: number; start: string; end: string;
   slack: number; is_critical: boolean; overallocated_with: number[]; constraint_start: string | null };
@@ -161,10 +161,11 @@ async function resetToDemo(page: Page) {
   });
 }
 
-test.skip(!process.env.E2E_LIVE, "live run: set E2E_LIVE=1 and E2E_BASE_URL");
 test.setTimeout(900_000);
 
-test("full frontend run against production", async ({ page }) => {
+test("full UI run: every control, numbers checked after each action", async ({ page }, testInfo) => {
+  const OUT = testInfo.outputDir;
+  fs.mkdirSync(OUT, { recursive: true });
   let afterDelete = false;
   const problems: string[] = [];
   const note = (s: string) => problems.push(afterDelete ? `[после удаления] ${s}` : s);
