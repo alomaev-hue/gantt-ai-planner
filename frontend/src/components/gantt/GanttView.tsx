@@ -185,9 +185,9 @@ export function GanttView(props: {
         if (!start || !end) return;
         const task = handlers.current.plan.tasks.find((t) => t.id === Number(ev.id));
         if (!task) return;
-        const op = interpretBarChange(task, start, end);
-        if (!op) return;
-        void handlers.current.onApply([op]).catch(snapBack);
+        const ops = interpretBarChange(task, start, end);
+        if (!ops.length) return;
+        void handlers.current.onApply(ops).catch(snapBack);
       },
     );
 
