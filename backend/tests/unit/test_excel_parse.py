@@ -232,3 +232,21 @@ def test_sheet_with_too_many_total_rows_is_rejected_even_when_mostly_blank():
     res = parse_plan_xlsx(xlsx(rows), MON)
     assert not res.ok
     assert any("лимит строк" in e.message for e in res.errors)
+
+
+def _with_member(data: bytes, member: str, content: bytes) -> bytes:
+    src = zipfile.ZipFile(BytesIO(data))
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            dst.writestr(info, content if info.filename == member else src.read(info.filename))
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("member", ["xl/worksheets/sheet1.xml", "xl/workbook.xml"])
+def test_malformed_xml_inside_the_archive_is_reported_not_raised(member):
+    good = xlsx([HEADER, ["Анализ", "", "Анна", 3, ""]])
+    broken = _with_member(good, member, b"<worksheet><sheetData><row r='1'><c r='A1'")
+    res = parse_plan_xlsx(broken, MON)
+    assert not res.ok
+    assert [e.message for e in res.errors] == ["Файл не является корректным .xlsx"]

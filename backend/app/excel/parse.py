@@ -3,9 +3,11 @@
 import math
 import re
 import zipfile
+from collections.abc import Iterator
 from datetime import date, datetime
 from io import BytesIO
 from typing import Any
+from xml.etree.ElementTree import ParseError
 
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
@@ -32,6 +34,16 @@ MAX_ZIP_MEMBER_UNCOMPRESSED_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_TOTAL_ROWS_SCANNED = 5000
 MAX_NON_EMPTY_ROWS_SCANNED = 30 + MAX_TASKS  # header-search budget + data-row budget
 TOO_LARGE_MESSAGE = "Файл слишком большой после распаковки"
+NOT_XLSX_MESSAGE = "Файл не является корректным .xlsx"
+# ParseError: malformed XML inside the archive; defusedxml's refusals are ValueErrors.
+_BROKEN_FILE_ERRORS = (
+    zipfile.BadZipFile,
+    InvalidFileException,
+    ParseError,
+    KeyError,
+    OSError,
+    ValueError,
+)
 _DURATION_RE = re.compile(
     r"^(\d+(?:[.,]\d+)?)\s*(д|дн|дня|дней|день|d|day|days|н|нед|недел[яьи]|w|wk|week|weeks)?\.?$"
 )
@@ -137,9 +149,19 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
         return _fail([bomb_issue], [])
     try:
         wb = load_workbook(BytesIO(data), read_only=True, data_only=True)
-    except (zipfile.BadZipFile, InvalidFileException, KeyError, OSError, ValueError):
-        return _fail([ImportIssue(row=None, message="Файл не является корректным .xlsx")], [])
+    except _BROKEN_FILE_ERRORS:
+        return _fail([ImportIssue(row=None, message=NOT_XLSX_MESSAGE)], [])
     ws = wb.worksheets[0]
+    # read_only mode parses the sheet XML lazily, so a corrupt sheet only fails while
+    # iterating. Record that instead of letting it escape as a 500.
+    malformed = False
+
+    def sheet_rows() -> Iterator[tuple[Any, ...]]:
+        nonlocal malformed
+        try:
+            yield from ws.iter_rows(values_only=True)
+        except _BROKEN_FILE_ERRORS:
+            malformed = True
 
     def cell(values: list[Any], key: str) -> Any:
         idx = columns.get(key)
@@ -155,7 +177,7 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
     # A single lazy pass over ws.iter_rows(): never materializes the whole sheet
     # (a huge but mostly-blank sheet would otherwise force allocating a giant list
     # up front), and bails out the moment either row budget is blown.
-    for row_no, values_tuple in enumerate(ws.iter_rows(values_only=True), start=1):
+    for row_no, values_tuple in enumerate(sheet_rows(), start=1):
         total_rows_seen += 1
         if total_rows_seen > MAX_TOTAL_ROWS_SCANNED:
             too_many_rows = True
@@ -217,6 +239,8 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
 
     wb.close()
 
+    if malformed:
+        return _fail([ImportIssue(row=None, message=NOT_XLSX_MESSAGE)], [])
     if too_many_rows:
         return _fail(
             [ImportIssue(row=None, message="Файл слишком большой (превышен лимит строк)")], []
