@@ -92,6 +92,11 @@ services:
       LLM_MODEL: claude-sonnet-5
       COOKIE_SECURE: "true"
       PUBLIC_ORIGIN: https://gantt-ai-planner.duckdns.org
+      # The app publishes no ports: requests only arrive through Caddy on the edge network,
+      # and Caddy overwrites X-Forwarded-* from clients. So trust them — uvicorn for the
+      # scheme, the app for the per-IP limits (last X-Forwarded-For hop = real client).
+      FORWARDED_ALLOW_IPS: "*"
+      TRUST_PROXY: "true"
     secrets:
       - anthropic_api_key
       - source: db_app_password

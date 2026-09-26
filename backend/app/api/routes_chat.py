@@ -9,9 +9,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sse_starlette import EventSourceResponse
 
-from app.api.deps import check_origin, get_service, require_session
+from app.api.deps import check_origin, client_ip, get_service, require_session
 from app.db import repo
-from app.services.errors import AgentBusy
+from app.services.errors import AgentBusy, RateLimited
 from app.services.ratelimit import check_chat_limits
 
 router = APIRouter(prefix="/api/chat")
@@ -40,6 +40,9 @@ async def chat(
     settings = request.app.state.settings
     if service.locks.is_busy(session_id):
         raise AgentBusy()
+    per_ip = settings.chat_limit_per_ip_hour
+    if not request.app.state.chat_ip_limiter.allow(client_ip(request), per_ip):
+        raise RateLimited(f"Лимит: {per_ip} сообщений в час с одного адреса. Попробуйте позже.")
     user_text = body.message.strip()
     turn_id = uuid.uuid4()
     # Check-then-reserve, atomically: without the advisory lock, two concurrent

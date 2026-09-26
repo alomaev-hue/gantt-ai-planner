@@ -25,6 +25,10 @@ services:
       DB_PASSWORD: planner
       PUBLIC_ORIGIN: http://localhost:8000
       LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      # Every request from the host arrives from the Docker gateway address, so the per-IP
+      # limits would be shared by all local e2e runs and demo recordings.
+      SESSION_LIMIT_PER_IP_HOUR: "1000"
+      CHAT_LIMIT_PER_IP_HOUR: "1000"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db: {condition: service_healthy}

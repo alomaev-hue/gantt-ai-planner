@@ -27,6 +27,13 @@ class Settings(BaseSettings):
 
     chat_limit_per_hour: int = 30
     chat_limit_per_day: int = 500
+    # Per client IP (in-memory, sliding hour): new sessions and chat messages across sessions.
+    session_limit_per_ip_hour: int = 20
+    chat_limit_per_ip_hour: int = 60
+    # Take the client IP from the last X-Forwarded-For hop (the one our reverse proxy set).
+    # Only turn on when every request reaches the app through that proxy (production: Caddy
+    # on the internal network); otherwise any client could pick its own "IP".
+    trust_proxy: bool = False
     max_upload_mb: int = 2
     session_ttl_days: int = 14
     max_versions: int = 50

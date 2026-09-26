@@ -22,7 +22,9 @@ WORKDIR /app
 COPY --from=py /app /app
 COPY --from=web /web/dist /app/static
 ENV PATH="/app/.venv/bin:$PATH" STATIC_DIR=/app/static PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Forwarded headers are trusted only from FORWARDED_ALLOW_IPS (uvicorn default: 127.0.0.1);
+# production sets it, and TRUST_PROXY for per-IP limits, in deploy/compose.prod.yml.
 USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--workers", "1", "--no-access-log"]
+CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--workers", "1", "--no-access-log"]

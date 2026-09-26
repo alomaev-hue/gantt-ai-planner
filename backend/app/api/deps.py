@@ -53,6 +53,19 @@ async def require_session(request: Request) -> uuid.UUID:
     return session_id
 
 
+def client_ip(request: Request) -> str:
+    """Client address for per-IP limits. Behind a trusted proxy it is the LAST
+    X-Forwarded-For hop: Caddy appends the address that connected to it (and by default
+    drops forwarded headers from untrusted clients), while earlier hops are whatever the
+    client sent. Without trust_proxy the header is ignored and the TCP peer is used."""
+    if request.app.state.settings.trust_proxy:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",")]
+        hops = [h for h in hops if h]
+        if hops:
+            return hops[-1]
+    return request.client.host if request.client else "unknown"
+
+
 def check_origin(request: Request) -> None:
     origin = request.headers.get("origin")
     if request.method in UNSAFE and origin and origin != request.app.state.settings.public_origin:

@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, Request, Response
 from app.api.deps import (
     check_origin,
     clear_session_cookie,
+    client_ip,
     cookie_name,
     get_service,
     require_session,
     set_session_cookie,
 )
+from app.services.errors import RateLimited
 
 router = APIRouter(prefix="/api", tags=["session"])
 
@@ -23,6 +25,9 @@ async def create_session(
     service = get_service(request)
     if token is not None and await service.resolve_session(token) is not None:
         return {"ok": True}
+    limiter = request.app.state.session_ip_limiter
+    if not limiter.allow(client_ip(request), settings.session_limit_per_ip_hour):
+        raise RateLimited("Слишком много новых сессий с вашего адреса. Попробуйте через час.")
     new_token, _session_id = await service.create_session()
     set_session_cookie(response, settings, new_token)
     return {"ok": True}

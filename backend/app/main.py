@@ -33,6 +33,7 @@ from app.mcp_server.client import PlanToolClient
 from app.mcp_server.server import build_mcp
 from app.services.cleanup import run_cleanup_cycle
 from app.services.events import EventBus
+from app.services.iplimit import SlidingWindowLimiter
 from app.services.locks import SessionLocks
 from app.services.plan_service import PlanService
 
@@ -129,6 +130,8 @@ def create_app(
         app.state.sessionmaker = sm
         app.state.service = service
         app.state.mcp = mcp
+        app.state.session_ip_limiter = SlidingWindowLimiter(window_seconds=3600)
+        app.state.chat_ip_limiter = SlidingWindowLimiter(window_seconds=3600)
         cleanup_task = asyncio.create_task(_cleanup_loop(app, cfg))
         try:
             async with PlanToolClient(mcp) as tool_client:
