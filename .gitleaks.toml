@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+# No project-specific allowlist entries yet.
+# If backend/tests/** fixtures trigger false positives on the default
+# ruleset, add a targeted allowlist here scoped to that path, e.g.:
+#
+# [[rules]]
+# id = "example-fixture-false-positive"
+#
+# [allowlist]
+#   paths = [
+#     '''backend/tests/.*''',
+#   ]

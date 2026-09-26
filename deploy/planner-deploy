@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# planner-deploy <tag>
+#
+# Deploys a new app image tag to the gantt-planner production stack and
+# rolls back automatically if the post-deploy health check does not pass
+# within HEALTH_TIMEOUT seconds. Meant to run as root, invoked via
+# `sudo planner-deploy <tag>` from planner-deploy-wrapper (the forced
+# command for the 'deploy' SSH user) - never run directly over SSH by an
+# untrusted caller.
+set -euo pipefail
+
+APP_DIR=/opt/gantt-planner
+ENV_FILE="$APP_DIR/.env"
+COMPOSE_FILE="$APP_DIR/compose.prod.yml"
+TAG_RE='^sha-[0-9a-f]{7,40}$'
+HEALTH_TIMEOUT=60
+HEALTH_INTERVAL=3
+
+usage() {
+    echo "usage: planner-deploy <tag>" >&2
+    echo "  <tag> must match $TAG_RE" >&2
+}
+
+if [ "$#" -ne 1 ]; then
+    usage
+    exit 1
+fi
+
+new_tag="$1"
+
+if ! [[ "$new_tag" =~ $TAG_RE ]]; then
+    echo "planner-deploy: rejected tag '$new_tag' (must match $TAG_RE)" >&2
+    exit 1
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "planner-deploy: $ENV_FILE not found" >&2
+    exit 1
+fi
+
+cd "$APP_DIR"
+
+prev_tag="$(grep -E '^IMAGE_TAG=' "$ENV_FILE" | tail -n1 | cut -d= -f2-)"
+if [ -z "$prev_tag" ]; then
+    echo "planner-deploy: could not read current IMAGE_TAG from $ENV_FILE" >&2
+    exit 1
+fi
+
+set_tag() {
+    tag="$1"
+    if grep -qE '^IMAGE_TAG=' "$ENV_FILE"; then
+        sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${tag}/" "$ENV_FILE"
+    else
+        echo "IMAGE_TAG=${tag}" >> "$ENV_FILE"
+    fi
+}
+
+wait_healthy() {
+    waited=0
+    while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
+        if docker compose -f "$COMPOSE_FILE" exec -T app python -c \
+            "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)" \
+            >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep "$HEALTH_INTERVAL"
+        waited=$((waited + HEALTH_INTERVAL))
+    done
+    return 1
+}
+
+compose() {
+    docker compose -f "$COMPOSE_FILE" "$@"
+}
+
+# From the moment .env names the new tag until the new stack is confirmed
+# healthy, ANY exit (a failed command, a failed check, set -e, a signal)
+# restores the previous tag and restarts it. The EXIT trap is the single
+# rollback path, so no failure can leave .env pointing at a tag that was
+# never successfully deployed (the next reboot / `up -d` would start it, and
+# the next deploy would treat it as the rollback target).
+env_written=0
+deployed=0
+finish() {
+    status=$?
+    trap - EXIT
+    if [ "$env_written" -eq 1 ] && [ "$deployed" -eq 0 ]; then
+        echo "planner-deploy: rolling back to '$prev_tag'" >&2
+        set_tag "$prev_tag" || echo "planner-deploy: FAILED to restore IMAGE_TAG in $ENV_FILE" >&2
+        if ! compose up -d; then
+            echo "planner-deploy: rollback 'up -d' failed - manual intervention needed" >&2
+        fi
+        [ "$status" -ne 0 ] || status=1
+    fi
+    exit "$status"
+}
+trap finish EXIT
+
+echo "planner-deploy: deploying '$new_tag' (previous: '$prev_tag')"
+
+# Pull first, with the tag passed only through the environment (it overrides
+# .env for Compose): if the image is missing or the network fails, .env and
+# the running stack are left exactly as they were.
+if ! IMAGE_TAG="$new_tag" compose pull app migrate; then
+    echo "planner-deploy: pull of '$new_tag' failed; nothing changed (still '$prev_tag')" >&2
+    exit 1
+fi
+
+set_tag "$new_tag"
+env_written=1
+
+if ! compose up -d; then
+    echo "planner-deploy: 'up -d' with '$new_tag' failed" >&2
+    exit 1
+fi
+
+if ! wait_healthy; then
+    echo "planner-deploy: '$new_tag' failed health check within ${HEALTH_TIMEOUT}s" >&2
+    exit 1
+fi
+
+deployed=1
+echo "planner-deploy: '$new_tag' is healthy"
