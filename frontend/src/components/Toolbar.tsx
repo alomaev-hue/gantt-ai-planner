@@ -9,6 +9,7 @@ import { useMeta } from "@/hooks/useMeta";
 import type { ThemeMode } from "@/hooks/useTheme";
 import { deleteMyData } from "@/lib/deleteMyData";
 import { cn } from "@/lib/utils";
+import { formatRu } from "@/lib/dates";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { McpConnectDialog } from "@/components/McpConnectDialog";
 import {
@@ -142,6 +143,14 @@ export function Toolbar({
           </button>
         ))}
       </div>
+
+      {/* Where the schedule is counted from and where it ends — matches the green start line. */}
+      <span
+        title="Старт — дата, от которой считается план (зелёная линия на диаграмме); окончание — конец последней задачи"
+        className="order-last w-full whitespace-nowrap px-1 text-sm font-semibold sm:order-none sm:w-auto"
+      >
+        Старт {formatRu(plan.plan.project_start)} · Окончание {formatRu(plan.plan.project_end)}
+      </span>
 
       <div className="ml-auto flex items-center gap-2">
         {meta?.llm_mode === "fake" && (
