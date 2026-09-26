@@ -79,7 +79,7 @@ cd frontend
 npm run lint && npm run typecheck && npm test && npm run build
 ```
 
-Юнит-тесты (`backend/tests/unit`) покрывают чистую логику — календарь, планировщик CPM, атомарные операции, diff, разбор и экспорт Excel; для них БД не нужна. Интеграционные тесты (`backend/tests/integration`) поднимают настоящий Postgres и проверяют API, сессии, версии/undo, MCP-инструменты и ход агента на fake-LLM.
+Юнит-тесты (`backend/tests/unit`) покрывают чистую логику — календарь, планировщик CPM, атомарные операции, diff, разбор и экспорт Excel; для них БД не нужна. Интеграционные тесты (`backend/tests/integration`) поднимают настоящий Postgres и проверяют API, сессии, версии/undo, MCP-инструменты и ход агента на fake-LLM. Отдельно (`test_scheduler_crosscheck.py`) наш планировщик CPM сверяется на ~200 случайных DAG-планах с независимым расчётом через NetworkX (BSD-3, dev-only тестовая зависимость).
 
 **E2E (Playwright)** — сценарий «демо-план → импорт `examples/sample-plan.xlsx` → правка через чат → экспорт» (`frontend/e2e/main.spec.ts`). Запускается против поднятого полного стека:
 
