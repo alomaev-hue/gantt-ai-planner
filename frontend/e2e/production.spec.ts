@@ -113,7 +113,11 @@ test("project start is marked on the timeline and in the legend", async ({ page 
   const bar = (await firstBar.boundingBox())!;
   expect(line.height).toBeGreaterThan(100);
   expect(Math.abs(line.x - bar.x)).toBeLessThanOrEqual(2);
-  await expect(page.getByText(/^Старт \d{2}\.\d{2}\.\d{4} · Окончание \d{2}\.\d{2}\.\d{4}$/)).toBeVisible();
+  const legend = page.getByText(/^Старт \d{2}\.\d{2}\.\d{4} · Окончание \d{2}\.\d{2}\.\d{4}$/);
+  await expect(legend).toBeVisible();
+  // The grid's «Начало» column shows the first task (no predecessors) starting on that date.
+  const [, dd, mm] = /^Старт (\d{2})\.(\d{2})/.exec(await legend.innerText())!;
+  await expect(page.locator(".wx-cell.wx-col-startLabel").filter({ hasText: /^\d{2}\.\d{2}$/ }).first()).toHaveText(`${dd}.${mm}`);
 });
 
 test.describe("phone (390px)", () => {

@@ -20,6 +20,8 @@
   --gantt-changed-bg: rgba(170, 59, 255, 0.16);
   --gantt-today: rgba(170, 59, 255, 0.08);
   --gantt-start: #16a34a;
+  /* SVAR Willow's default bar color, for the legend (which sits outside SVAR's theme scope). */
+  --gantt-task: #3983eb;
 }
 
 .dark {
@@ -29,6 +31,7 @@
   --gantt-changed-bg: rgba(192, 132, 252, 0.2);
   --gantt-today: rgba(192, 132, 252, 0.12);
   --gantt-start: #4ade80;
+  --gantt-task: #37a9ef;
 }
 
 /* SVAR's themes default to Open Sans / Roboto, declared with @font-face rules pointing at its CDN
@@ -94,17 +97,19 @@
   display: none;
 }
 
-/* The narrow "№" and "Дн." header cells were truncated to "N…"/"Д…": each SVAR header cell has
+/* The narrow "№", "Начало" and "Дн." header cells were truncated to "N…"/"Д…": each SVAR header cell has
    12px of left padding, a column-resize grip and an (empty unless sorted) sort slot that still
    reserves a 15px left margin. These two columns hold fixed-width content and don't need
    resizing, so drop the grip and even out the padding; an empty sort slot takes no room in any
    column. `!important` for the same reason as the bar colors above: SVAR's own hashed-class rules
    outrank a plain selector. */
 .wx-h-row .wx-cell.wx-col-id,
+.wx-h-row .wx-cell.wx-col-startLabel,
 .wx-h-row .wx-cell.wx-col-workDays {
   padding-left: 4px !important;
 }
 .wx-h-row .wx-cell.wx-col-id .wx-grip,
+.wx-h-row .wx-cell.wx-col-startLabel .wx-grip,
 .wx-h-row .wx-cell.wx-col-workDays .wx-grip {
   display: none;
 }

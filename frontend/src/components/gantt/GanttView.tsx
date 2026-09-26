@@ -124,10 +124,11 @@ export function GanttView(props: {
   // with `flexgrow` so it grows into any extra space) and passing `gridWidth` computed from our
   // own columns fixes both the baseline and the total.
   //
-  // Dates (Начало/Окончание) used to be grid columns too, but that pushed the grid to ~620px,
-  // leaving barely a third of a 1440px screen for the actual timeline — they're on the bar's
-  // tooltip and the task modal instead (spec review round 1). On a narrow pane, only №+Задача
-  // fit; Исполнитель/Дн. would otherwise squeeze the timeline back down to nothing.
+  // Full Начало/Окончание date columns used to be here too, but that pushed the grid to ~620px,
+  // leaving barely a third of a 1440px screen for the actual timeline (spec review round 1).
+  // A compact «Начало» (дд.мм) is back: without any date the grid couldn't answer "when does
+  // this start / where is the plan counted from" — full dates stay on the bar's tooltip and in
+  // the task modal. On a narrow pane, only №+Задача fit; the rest would squeeze the timeline.
   const columns = useMemo(
     () =>
       narrow
@@ -137,8 +138,9 @@ export function GanttView(props: {
           ]
         : [
             { id: "id", header: "№", width: 44, align: "center" as const },
-            { id: "text", header: "Задача", width: 220, flexgrow: 1 },
+            { id: "text", header: "Задача", width: 180, flexgrow: 1 },
             { id: "assignee", header: "Исполнитель", width: 130 },
+            { id: "startLabel", header: "Начало", width: 76, align: "center" as const },
             { id: "workDays", header: "Дн.", width: 48, align: "center" as const },
           ],
     [narrow],
