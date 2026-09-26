@@ -28,6 +28,67 @@ def _stem(word: str) -> str:
     return lower
 
 
+# Russian-declension-tolerant stem used to match a typed assignee name (any case: "Наталью
+# Белову") against an existing assignee from the plan table (nominative: "Наталья Белова").
+_RU_DECLENSION_ENDINGS = "аяуюеиыйоь"
+_TABLE_ROW_RE = re.compile(r"^\d+ \| ")
+
+
+def _declension_stem(word: str) -> str:
+    lower = word.lower()
+    for _ in range(2):
+        if lower and lower[-1] in _RU_DECLENSION_ENDINGS:
+            lower = lower[:-1]
+        else:
+            break
+    return lower
+
+
+def _stems_match(a: str, b: str) -> bool:
+    sa, sb = _declension_stem(a), _declension_stem(b)
+    shorter = min(len(sa), len(sb))
+    return shorter >= 3 and (sa.startswith(sb) or sb.startswith(sa))
+
+
+def _known_assignees(system: list[dict[str, Any]]) -> list[str]:
+    """Existing assignees, parsed from the rendered plan table in a `system` block (see
+    `render_plan_table`: header "id | задача | исполнитель | ...", one row per task)."""
+    names: list[str] = []
+    seen: set[str] = set()
+    for block in system:
+        text = block.get("text") if isinstance(block, dict) else None
+        if not isinstance(text, str):
+            continue
+        for line in text.splitlines():
+            if not _TABLE_ROW_RE.match(line):
+                continue
+            fields = line.split(" | ")
+            if len(fields) < 3:
+                continue
+            assignee = fields[2].strip()
+            if assignee and assignee != "—" and assignee not in seen:
+                seen.add(assignee)
+                names.append(assignee)
+    return names
+
+
+def _resolve_assignee(typed: str, known: list[str]) -> str:
+    """Maps a typed assignee name to an existing one when every typed word matches the
+    corresponding word of an existing assignee by declension-tolerant stem (see
+    `_stems_match`). Falls back to the typed text (kept exactly as typed) when there is no
+    match, or more than one candidate matches ambiguously."""
+    typed_words = typed.split()
+    matches = [
+        name
+        for name in known
+        if len(name.split()) == len(typed_words)
+        and all(_stems_match(tw, nw) for tw, nw in zip(typed_words, name.split(), strict=True))
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return typed
+
+
 _SHIFT_ID_PREFIX = "fake_shift_"
 
 
@@ -96,12 +157,14 @@ class FakeLLM:
         tools: list[dict[str, Any]],
         messages: list[dict[str, Any]],
     ) -> AsyncIterator[LLMEvent]:
-        result = self._respond(messages)
+        result = self._respond(system, messages)
         for i in range(0, len(result.text), _CHUNK):
             yield TextDelta(result.text[i : i + _CHUNK])
         yield Completed(result)
 
-    def _respond(self, messages: list[dict[str, Any]]) -> LLMTurnResult:
+    def _respond(
+        self, system: list[dict[str, Any]], messages: list[dict[str, Any]]
+    ) -> LLMTurnResult:
         fake_id = f"fake_{len(messages)}"
         last = messages[-1]
         content = last.get("content")
@@ -111,7 +174,7 @@ class FakeLLM:
             and any(b.get("type") == "tool_result" for b in content)
         ):
             return self._respond_to_tool_result(messages, content, fake_id)
-        return self._respond_to_text(content if isinstance(content, str) else "", fake_id)
+        return self._respond_to_text(content if isinstance(content, str) else "", system, fake_id)
 
     def _respond_to_tool_result(
         self, messages: list[dict[str, Any]], content: list[dict[str, Any]], fake_id: str
@@ -140,7 +203,9 @@ class FakeLLM:
             return _final_text(f"Не получилось: {error_block.get('content', '')}")
         return _final_text("Готово. " + _summary_or_head(first.get("content", "")))
 
-    def _respond_to_text(self, text: str, fake_id: str) -> LLMTurnResult:
+    def _respond_to_text(
+        self, text: str, system: list[dict[str, Any]], fake_id: str
+    ) -> LLMTurnResult:
         lowered = text.lower()
 
         m = re.search(
@@ -162,7 +227,8 @@ class FakeLLM:
 
         m = re.search(r"назначь задачу (\d+) на (.+)", lowered, re.IGNORECASE)
         if m:
-            assignee = text[m.start(2) : m.end(2)].strip().rstrip(".,;:!?")
+            typed = text[m.start(2) : m.end(2)].strip().rstrip(".,;:!?")
+            assignee = _resolve_assignee(typed, _known_assignees(system))
             op = {"op": "update_task", "id": int(m.group(1)), "assignee": assignee}
             return _tool_use(fake_id, "apply_operations", {"operations": [op]})
 

@@ -79,3 +79,48 @@ async def test_assign_keeps_original_case():
     _, r = await run([{"role": "user", "content": "Назначь задачу 5 на Анну Смирнову."}])
     op = r.tool_calls[0].input["operations"][0]
     assert op == {"op": "update_task", "id": 5, "assignee": "Анну Смирнову"}
+
+
+def _system_table(*assignees):
+    header = (
+        "id | задача | исполнитель | длит | предш | не раньше | начало | конец | резерв | флаги"
+    )
+    rows = [
+        f"{i + 1} | Задача {i + 1} | {name} | 1 | — | — | 2026-01-01 | 2026-01-02 | 0 | —"
+        for i, name in enumerate(assignees)
+    ]
+    return [{"type": "text", "text": "\n".join([header, *rows])}]
+
+
+async def run_assign(text, *assignees):
+    system = _system_table(*assignees)
+    messages = [{"role": "user", "content": text}]
+    result = None
+    async for ev in FakeLLM().stream(system=system, tools=[], messages=messages):
+        if isinstance(ev, Completed):
+            result = ev.result
+    return result
+
+
+async def test_assign_matches_existing_assignee_by_stem():
+    r = await run_assign("Назначь задачу 5 на Наталью Белову.", "Наталья Белова", "Игорь Петров")
+    op = r.tool_calls[0].input["operations"][0]
+    assert op == {"op": "update_task", "id": 5, "assignee": "Наталья Белова"}
+
+
+async def test_assign_matches_existing_assignee_by_stem_second_name():
+    r = await run_assign("Назначь задачу 5 на Игоря Петрова.", "Наталья Белова", "Игорь Петров")
+    op = r.tool_calls[0].input["operations"][0]
+    assert op == {"op": "update_task", "id": 5, "assignee": "Игорь Петров"}
+
+
+async def test_assign_unknown_name_kept_as_typed():
+    r = await run_assign("Назначь задачу 5 на Василия Пупкина.", "Наталья Белова", "Игорь Петров")
+    op = r.tool_calls[0].input["operations"][0]
+    assert op == {"op": "update_task", "id": 5, "assignee": "Василия Пупкина"}
+
+
+async def test_assign_ambiguous_match_kept_as_typed():
+    r = await run_assign("Назначь задачу 5 на Сашу Иванова.", "Саша Иванов", "Саша Иванова")
+    op = r.tool_calls[0].input["operations"][0]
+    assert op == {"op": "update_task", "id": 5, "assignee": "Сашу Иванова"}
