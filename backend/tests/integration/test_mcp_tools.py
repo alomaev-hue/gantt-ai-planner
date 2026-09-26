@@ -98,3 +98,23 @@ async def test_missing_session_is_tool_error(app):
     async with PlanToolClient(mcp) as client:
         r = await client.call("get_plan", {}, session_id=None, turn_id=None)
     assert r.is_error and "сесси" in r.text
+
+
+async def test_resource_load_groups_assignees_case_insensitively(app):
+    sid = await new_sid(app)
+    tools = app.state.tool_client
+    ops = {
+        "operations": [
+            {"op": "add_task", "name": "A", "duration": 3, "assignee": "Зоя Ёлкина"},
+            {"op": "add_task", "name": "B", "duration": 3, "assignee": "зоя ёлкина "},
+        ]
+    }
+    r = await tools.call("apply_operations", ops, session_id=sid, turn_id=None)
+    assert not r.is_error, r.text
+    a, b = r.data["created_task_ids"]
+    r = await tools.call("get_resource_load", {"assignee": "ёлкина"}, session_id=sid, turn_id=None)
+    assert not r.is_error, r.text
+    people = r.data["result"]
+    assert len(people) == 1
+    assert {t["id"] for t in people[0]["tasks"]} == {a, b}
+    assert people[0]["conflicts"] == [[a, b]]

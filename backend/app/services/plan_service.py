@@ -20,7 +20,14 @@ from app.domain.operations import (
 )
 from app.domain.scheduler import ScheduledPlan, schedule
 from app.domain.seed import build_demo_plan
-from app.services.errors import AgentBusy, NoSession, NotFound, NothingToRedo, NothingToUndo
+from app.services.errors import (
+    AgentBusy,
+    NoSession,
+    NotFound,
+    NothingToRedo,
+    NothingToUndo,
+    VersionConflict,
+)
 from app.services.events import EventBus
 from app.services.locks import SessionLocks
 from app.services.sessions import hash_token, new_token
@@ -55,6 +62,18 @@ class ApplyOutcome:
     warnings: list[str]
     created_task_ids: list[int]
     summary: str
+
+
+def apply_summary(changes: list[Change], before_start: date, after_start: date) -> str:
+    """`summarize_changes` plus the project start, which `diff_plans` (per-task) can't see: a
+    `set_project_start` that moves no task (every root task constrained later, or an empty plan)
+    is still a real edit and must not read as «Без изменений»."""
+    if before_start == after_start:
+        return summarize_changes(changes)
+    note = f"старт проекта перенесён на {after_start:%d.%m.%Y}"
+    if not changes:
+        return note[0].upper() + note[1:]
+    return f"{summarize_changes(changes)}; {note}"
 
 
 def _index(meta: list[VersionMeta], current: int) -> int:
@@ -134,22 +153,48 @@ class PlanService:
         async with self.sessionmaker() as db:
             return await self._state(db, session_id)
 
-    async def _state(self, db: AsyncSession, session_id: uuid.UUID) -> PlanState:
+    async def _load(self, db: AsyncSession, session_id: uuid.UUID) -> tuple[int, Plan]:
+        """Current version number and its (unscheduled) plan."""
         session = await repo.get_session(db, session_id)
         if session is None:
             raise NoSession()
         version = await repo.get_version(db, session_id, session.current_version)
         if version is None:
             raise DomainError("Текущая версия плана не найдена")
+        return session.current_version, Plan.model_validate(version.snapshot)
+
+    async def _build_state(
+        self,
+        db: AsyncSession,
+        session_id: uuid.UUID,
+        version: int,
+        plan: Plan,
+        scheduled: ScheduledPlan,
+    ) -> PlanState:
+        """PlanState for a plan the caller already holds (and has scheduled): only the version
+        list is read, so a write path doesn't re-parse the snapshot it just stored and
+        re-schedule it a third time."""
         meta = await repo.list_version_meta(db, session_id)
-        plan = Plan.model_validate(version.snapshot)
         return PlanState(
-            version=session.current_version,
+            version=version,
             plan=plan,
-            scheduled=schedule(plan),
-            can_undo=undo_target(meta, session.current_version) is not None,
-            can_redo=redo_target(meta, session.current_version) is not None,
+            scheduled=scheduled,
+            can_undo=undo_target(meta, version) is not None,
+            can_redo=redo_target(meta, version) is not None,
         )
+
+    async def _state(self, db: AsyncSession, session_id: uuid.UUID) -> PlanState:
+        version, plan = await self._load(db, session_id)
+        return await self._build_state(db, session_id, version, plan, schedule(plan))
+
+    @staticmethod
+    def _check_version(expected: int | None, current: int) -> None:
+        """Optimistic concurrency (spec §6): a client that read version N and edits on top of it
+        says so; if another tab / the agent / MCP has moved the plan on since, the edit is
+        refused instead of silently overwriting the newer state. `None` skips the check (the
+        agent and MCP clients act on what they just read inside the same lock)."""
+        if expected is not None and expected != current:
+            raise VersionConflict(expected, current)
 
     async def task_history(self, session_id: uuid.UUID, task_id: int) -> list[dict[str, Any]]:
         """History of a task (spec §6/§10): every stored version's diff, filtered to changes
@@ -220,32 +265,40 @@ class PlanService:
         source: Source,
         turn_id: uuid.UUID | None = None,
         confirmed: bool = False,
+        expected_version: int | None = None,
     ) -> ApplyOutcome:
         check_batch_size(ops)  # before confirmation: an oversized batch fails however confirmed
         await self._guard_busy(session_id, source)
         async with self.locks.lock(session_id), self.sessionmaker() as db, db.begin():
-            current = await self._state(db, session_id)
-            if not confirmed and requires_confirmation(current.plan, ops):
+            version, plan = await self._load(db, session_id)
+            self._check_version(expected_version, version)
+            if not confirmed and requires_confirmation(plan, ops):
                 raise ConfirmationRequired(
                     "Пакет удаляет много задач. Спросите пользователя и повторите с confirmed=true"
                 )
             # CPU-bound (up to MAX_BATCH_OPS ops on a 500-task plan): run it off the event loop
             # so SSE heartbeats, /healthz and other sessions stay responsive meanwhile.
-            result = await asyncio.to_thread(apply_operations, current.plan, ops)
-            summary = summarize_changes(result.changes)
-            if result.changes:
+            before = await asyncio.to_thread(schedule, plan)
+            result = await asyncio.to_thread(apply_operations, plan, ops, before)
+            summary = apply_summary(result.changes, plan.project_start, result.plan.project_start)
+            changed = bool(result.changes) or result.plan.project_start != plan.project_start
+            if changed:
                 await self._commit(
                     db,
                     session_id,
-                    current.version,
+                    version,
                     result.plan,
                     source,
                     turn_id,
                     summary,
                     [c.model_dump() for c in result.changes],
                 )
-            state = await self._state(db, session_id)
-        if result.changes:
+                state = await self._build_state(
+                    db, session_id, version + 1, result.plan, result.scheduled
+                )
+            else:
+                state = await self._build_state(db, session_id, version, plan, before)
+        if changed:
             changed_ids = sorted({c.task_id for c in result.changes})
             self._publish(session_id, state.version, source, turn_id, changed_ids)
         return ApplyOutcome(
@@ -263,12 +316,13 @@ class PlanService:
     ) -> PlanState:
         await self._guard_busy(session_id, source)
         async with self.locks.lock(session_id), self.sessionmaker() as db, db.begin():
-            current = await self._state(db, session_id)
-            changes = diff_plans(current.scheduled, schedule(plan))
+            version, current = await self._load(db, session_id)
+            before, after = await asyncio.to_thread(lambda: (schedule(current), schedule(plan)))
+            changes = diff_plans(before, after)
             await self._commit(
                 db,
                 session_id,
-                current.version,
+                version,
                 plan,
                 source,
                 None,
@@ -279,7 +333,7 @@ class PlanService:
                 await repo.add_chat_message(
                     db, session_id=session_id, role="system", content=chat_note
                 )
-            state = await self._state(db, session_id)
+            state = await self._build_state(db, session_id, version + 1, plan, after)
         self._publish(session_id, state.version, source, None, sorted({c.task_id for c in changes}))
         return state
 
@@ -288,11 +342,23 @@ class PlanService:
             session_id, build_demo_plan(self._today()), source="reset", summary="Сброс к демо-плану"
         )
 
-    async def undo(self, session_id: uuid.UUID, *, source: Source = "user") -> PlanState:
-        return await self._move_pointer(session_id, undo_target, NothingToUndo(), source)
+    async def undo(
+        self,
+        session_id: uuid.UUID,
+        *,
+        source: Source = "user",
+        expected_version: int | None = None,
+    ) -> PlanState:
+        return await self._move_pointer(
+            session_id, undo_target, NothingToUndo(), source, expected_version
+        )
 
-    async def redo(self, session_id: uuid.UUID) -> PlanState:
-        return await self._move_pointer(session_id, redo_target, NothingToRedo(), "user")
+    async def redo(
+        self, session_id: uuid.UUID, *, expected_version: int | None = None
+    ) -> PlanState:
+        return await self._move_pointer(
+            session_id, redo_target, NothingToRedo(), "user", expected_version
+        )
 
     async def _move_pointer(
         self,
@@ -300,11 +366,13 @@ class PlanService:
         target_fn: Callable[[list[VersionMeta], int], int | None],
         empty_error: DomainError,
         source: Source,
+        expected_version: int | None,
     ) -> PlanState:
         await self._guard_busy(session_id, source)
         async with self.locks.lock(session_id), self.sessionmaker() as db, db.begin():
-            before = await self._state(db, session_id)
-            target = target_fn(await repo.list_version_meta(db, session_id), before.version)
+            version, before_plan = await self._load(db, session_id)
+            self._check_version(expected_version, version)
+            target = target_fn(await repo.list_version_meta(db, session_id), version)
             if target is None:
                 raise empty_error
             session = await repo.get_session(db, session_id)
@@ -312,7 +380,8 @@ class PlanService:
             session.current_version = target
             await db.flush()
             state = await self._state(db, session_id)
-        changed = sorted({c.task_id for c in diff_plans(before.scheduled, state.scheduled)})
+        before = await asyncio.to_thread(schedule, before_plan)
+        changed = sorted({c.task_id for c in diff_plans(before, state.scheduled)})
         self._publish(session_id, state.version, source, None, changed)
         return state
 

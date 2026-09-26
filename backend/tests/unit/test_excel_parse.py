@@ -250,3 +250,16 @@ def test_malformed_xml_inside_the_archive_is_reported_not_raised(member):
     res = parse_plan_xlsx(broken, MON)
     assert not res.ok
     assert [e.message for e in res.errors] == ["Файл не является корректным .xlsx"]
+
+
+def test_dependency_count_is_capped_on_import():
+    from app.domain.models import MAX_DEPENDENCIES
+
+    # 70 tasks, each depending on every earlier one: 2415 edges > MAX_DEPENDENCIES.
+    rows: list[list[object]] = [["№", *HEADER]]
+    for i in range(1, 71):
+        preds = ", ".join(str(p) for p in range(1, i))
+        rows.append([i, f"T{i}", "", "", 1, preds])
+    res = parse_plan_xlsx(xlsx(rows), MON)
+    assert not res.ok
+    assert any(f"Больше {MAX_DEPENDENCIES} связей" in e.message for e in res.errors)

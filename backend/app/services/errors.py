@@ -19,6 +19,16 @@ class NoSession(DomainError):
         super().__init__("Сессия не найдена")
 
 
+class VersionConflict(DomainError):
+    code = "version_conflict"
+
+    def __init__(self, expected: int, current: int) -> None:
+        super().__init__(
+            "План изменился с момента загрузки: обновите его и повторите изменение",
+            details={"expected_version": expected, "current_version": current},
+        )
+
+
 class NothingToUndo(DomainError):
     code = "nothing_to_undo"
 

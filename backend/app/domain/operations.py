@@ -9,13 +9,13 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_valid
 from app.domain.calendar import add_workdays, next_workday
 from app.domain.diff import Change, diff_plans
 from app.domain.errors import OperationError, PlanValidationError
-from app.domain.models import MAX_TASKS, Dependency, Plan, Task
+from app.domain.models import MAX_DEPENDENCIES, MAX_LAG, MAX_TASKS, Dependency, Plan, Task
 from app.domain.scheduler import ScheduledPlan, schedule
 
 
 class PredRef(BaseModel):
     id: int
-    lag: int = Field(default=0, ge=0, le=365)
+    lag: int = Field(default=0, ge=0, le=MAX_LAG)
 
 
 class AddTask(BaseModel):
@@ -65,7 +65,7 @@ class AddDependency(BaseModel):
     op: Literal["add_dependency"]
     predecessor_id: int
     successor_id: int
-    lag: int = Field(default=0, ge=0, le=365)
+    lag: int = Field(default=0, ge=0, le=MAX_LAG)
 
 
 class RemoveDependency(BaseModel):
@@ -129,9 +129,14 @@ def requires_confirmation(plan: Plan, ops: Sequence[Operation]) -> bool:
     return len(deleted) > 5 or (bool(existing) and len(deleted) * 2 > len(existing))
 
 
-def apply_operations(plan: Plan, ops: Sequence[Operation]) -> ApplyResult:
+def apply_operations(
+    plan: Plan, ops: Sequence[Operation], before: ScheduledPlan | None = None
+) -> ApplyResult:
+    """`before` is `schedule(plan)`; a caller that already has it passes it in so a 500-task
+    plan isn't scheduled twice per request."""
     check_batch_size(ops)
-    before = schedule(plan)
+    if before is None:
+        before = schedule(plan)
     work = plan.model_copy(deep=True)
     created: list[int] = []
     moved: list[int] = []
@@ -147,6 +152,8 @@ def apply_operations(plan: Plan, ops: Sequence[Operation]) -> ApplyResult:
             raise OperationError(msg, index=index) from exc
     if len(work.tasks) > MAX_TASKS:
         raise OperationError(f"В плане не может быть больше {MAX_TASKS} задач")
+    if len(work.dependencies) > MAX_DEPENDENCIES:
+        raise OperationError(f"В плане не может быть больше {MAX_DEPENDENCIES} связей")
     try:
         work = Plan.model_validate(work.model_dump())
         after = schedule(work)
@@ -270,9 +277,12 @@ def _apply_one(
                 d for d in plan.dependencies if op.id not in (d.predecessor_id, d.successor_id)
             ]
             plan.tasks.remove(task)
+            # Bridging A→B→C into A→C sums the lags; clamp so two large lags can't push the
+            # bridge past MAX_LAG and turn a plain delete into a validation error.
             for a in incoming:
                 for b in outgoing:
-                    _upsert_dep(plan, a.predecessor_id, b.successor_id, a.lag + b.lag)
+                    lag = min(a.lag + b.lag, MAX_LAG)
+                    _upsert_dep(plan, a.predecessor_id, b.successor_id, lag)
         case SetProjectStart():
             plan.project_start = next_workday(op.date)
 

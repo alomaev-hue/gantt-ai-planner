@@ -15,7 +15,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.domain.calendar import next_workday
 from app.domain.errors import CycleError
-from app.domain.models import MAX_TASKS, Dependency, Plan, Task
+from app.domain.models import MAX_DEPENDENCIES, MAX_LAG, MAX_TASKS, Dependency, Plan, Task
 from app.domain.scheduler import topological_order
 from app.excel.headers import match_column
 
@@ -306,11 +306,15 @@ def parse_plan_xlsx(data: bytes, project_start: date) -> ImportResult:
                     ImportIssue(row=row, message="Задача не может зависеть от самой себя")
                 )
                 continue
-            if lag > 365:
-                errors.append(ImportIssue(row=row, message=f"Лаг больше 365 дней в «{token}»"))
+            if lag > MAX_LAG:
+                errors.append(
+                    ImportIssue(row=row, message=f"Лаг больше {MAX_LAG} дней в «{token}»")
+                )
                 continue
             deps[(ref, succ)] = max(lag, deps.get((ref, succ), 0))
 
+    if len(deps) > MAX_DEPENDENCIES:
+        errors.append(ImportIssue(row=None, message=f"Больше {MAX_DEPENDENCIES} связей в файле"))
     if errors:
         return _fail(errors, warnings)
 

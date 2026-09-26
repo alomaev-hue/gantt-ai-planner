@@ -1,4 +1,4 @@
-import { ApiError, ensureSession } from "./client";
+import { ensureSession, toError } from "./client";
 import type { ChatEvent } from "./types";
 
 // Parses a chunk of an SSE stream. `\n\n` (or `\r\n\r\n`) separates events; `: ...` lines are
@@ -23,12 +23,6 @@ export function parseSSE(buffer: string): { events: { event: string; data: strin
   return { events, rest };
 }
 
-async function toApiError(res: Response): Promise<ApiError> {
-  const body = await res.json().catch(() => null);
-  const err = body?.error;
-  return new ApiError(res.status, err?.code ?? "http_error", err?.message ?? `Ошибка ${res.status}`, err?.details);
-}
-
 // Streams a chat turn from POST /api/chat. On a 401 `no_session` it re-establishes the session
 // and retries once; any other non-2xx response throws the `ApiError` parsed from the JSON body.
 export async function* streamChat(message: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
@@ -42,12 +36,12 @@ export async function* streamChat(message: string, signal?: AbortSignal): AsyncG
 
   let res = await post();
   if (res.status === 401) {
-    const err = await toApiError(res);
+    const err = await toError(res);
     if (err.code !== "no_session") throw err;
     await ensureSession();
     res = await post();
   }
-  if (!res.ok) throw await toApiError(res);
+  if (!res.ok) throw await toError(res);
   if (!res.body) return;
 
   const reader = res.body.getReader();

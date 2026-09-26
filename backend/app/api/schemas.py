@@ -18,7 +18,14 @@ class PlanResponse(BaseModel):
     plan: ScheduledPlan
 
 
-class ApplyRequest(BaseModel):
+class VersionedRequest(BaseModel):
+    # Optimistic concurrency: the plan version the client's edit is based on. When set and the
+    # server has moved on (another tab, the agent, MCP), the request is refused with 409
+    # `version_conflict` instead of silently overwriting the newer state. Omit to skip the check.
+    expected_version: int | None = None
+
+
+class ApplyRequest(VersionedRequest):
     ops: OperationBatch
 
 

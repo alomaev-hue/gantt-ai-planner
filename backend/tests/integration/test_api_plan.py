@@ -163,3 +163,23 @@ async def test_task_history_shows_agent_source(session_client):
 async def test_task_history_unknown_task_404(session_client):
     r = await session_client.get("/api/plan/tasks/999/history")
     assert r.status_code == 404 and r.json()["error"]["code"] == "not_found"
+
+
+async def test_operations_with_stale_expected_version_get_409(session_client):
+    r = await session_client.post(
+        "/api/plan/operations", json={"ops": [{"op": "update_task", "id": 1, "duration": 6}]}
+    )
+    assert r.json()["version"] == 2
+    r = await session_client.post(
+        "/api/plan/operations",
+        json={"ops": [{"op": "update_task", "id": 1, "duration": 7}], "expected_version": 1},
+    )
+    assert r.status_code == 409
+    err = r.json()["error"]
+    assert err["code"] == "version_conflict" and err["details"]["current_version"] == 2
+    r = await session_client.post("/api/plan/undo", json={"expected_version": 1})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "version_conflict"
+    r = await session_client.post("/api/plan/undo", json={"expected_version": 2})
+    assert r.status_code == 200 and r.json()["version"] == 1
+    r = await session_client.post("/api/plan/redo", json={"expected_version": 1})
+    assert r.status_code == 200 and r.json()["version"] == 2

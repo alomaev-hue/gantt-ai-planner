@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ensureSession } from "@/api/client";
-import { PLAN_KEY } from "./usePlan";
+import { cachedPlanVersion, PLAN_KEY } from "./usePlan";
 
 const RECONNECT_DELAY_MS = 2000;
 
@@ -11,8 +11,30 @@ interface AgentStatusPayload {
 
 // backend/app/services/plan_service.py `_publish`: {type, version, source, turn_id, changed_task_ids}.
 interface PlanChangedPayload {
+  version?: number;
   source?: string;
   changed_task_ids?: number[];
+}
+
+// The version a `plan_changed` event announces, or null when the payload doesn't carry one.
+export function parsePlanVersion(data: string): number | null {
+  try {
+    const payload = JSON.parse(data) as PlanChangedPayload;
+    return typeof payload.version === "number" ? payload.version : null;
+  } catch {
+    return null;
+  }
+}
+
+// Whether a `plan_changed` event for `eventVersion` needs a refetch when the cache already holds
+// `cachedVersion`. This tab's own apply/undo/redo writes the response straight into the cache,
+// and the server's event for that same version arrives right after — refetching then would
+// download the whole (up to 500-task) plan again for identical data. Only an exact match is
+// skipped: an undo elsewhere announces a LOWER version that still has to be fetched, so `<=`
+// would be wrong. Unknown on either side → refetch.
+export function shouldRefetchPlan(cachedVersion: number | undefined, eventVersion: number | null): boolean {
+  if (cachedVersion === undefined || eventVersion === null) return true;
+  return cachedVersion !== eventVersion;
 }
 
 // Sources that replace the whole plan: every task id is "changed", so highlighting them would
@@ -61,8 +83,11 @@ export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agen
     };
 
     const handlePlanChanged = (event: Event) => {
-      void queryClient.invalidateQueries({ queryKey: PLAN_KEY });
-      onPlanChangedRef.current(parsePlanChanged((event as MessageEvent<string>).data));
+      const data = (event as MessageEvent<string>).data;
+      if (shouldRefetchPlan(cachedPlanVersion(queryClient), parsePlanVersion(data))) {
+        void queryClient.invalidateQueries({ queryKey: PLAN_KEY });
+      }
+      onPlanChangedRef.current(parsePlanChanged(data));
     };
 
     const detach = (es: EventSource) => {

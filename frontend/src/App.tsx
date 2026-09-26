@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/api/client";
 import type { Operation } from "@/api/types";
-import { PLAN_KEY, usePlan } from "@/hooks/usePlan";
+import { cachedPlanVersion, PLAN_KEY, refetchOnConflict, usePlan } from "@/hooks/usePlan";
 import { useFlashHighlight } from "@/hooks/useFlashHighlight";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { useTheme } from "@/hooks/useTheme";
@@ -43,10 +43,11 @@ function App() {
   // toasting so GanttView knows to snap the bar/link back to the last known-good plan.
   const onApplyPlanOps = async (ops: Operation[]) => {
     try {
-      const res = await api.applyOps(ops);
+      const res = await api.applyOps(ops, cachedPlanVersion(queryClient));
       queryClient.setQueryData(PLAN_KEY, res);
       res.warnings.forEach((warning) => toast.warning(warning));
     } catch (err) {
+      refetchOnConflict(queryClient, err);
       toast.error(err instanceof ApiError ? err.message : "Не удалось применить изменение");
       throw err;
     }

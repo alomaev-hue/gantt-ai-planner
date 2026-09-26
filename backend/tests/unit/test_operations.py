@@ -257,3 +257,35 @@ def test_batch_size_is_capped():
     with pytest.raises(OperationError) as exc:
         apply_operations(base_plan(), over)
     assert "не больше 200 операций" in exc.value.message
+
+
+def test_delete_task_clamps_bridged_lag_to_max():
+    from app.domain.models import MAX_LAG
+
+    plan = base_plan()
+    plan.dependencies = [
+        Dependency(predecessor_id=1, successor_id=2, lag=200),
+        Dependency(predecessor_id=2, successor_id=3, lag=200),
+    ]
+    res = apply_operations(plan, ops({"op": "delete_task", "id": 2}))
+    assert [(d.predecessor_id, d.successor_id, d.lag) for d in res.plan.dependencies] == [
+        (1, 3, MAX_LAG)
+    ]
+
+
+def test_dependency_count_is_capped():
+    from app.domain.models import MAX_DEPENDENCIES
+
+    # 70 independent tasks, then every earlier task as a predecessor of every later one:
+    # 70*69/2 = 2415 edges > MAX_DEPENDENCIES, added in batches under MAX_BATCH_OPS.
+    plan = Plan(
+        project_start=MON,
+        tasks=[Task(id=i, name=f"T{i}", duration=1) for i in range(1, 71)],
+    )
+    batch = [
+        {"op": "set_dependencies", "id": s, "predecessors": [{"id": p} for p in range(1, s)]}
+        for s in range(2, 71)
+    ]
+    with pytest.raises(OperationError) as exc:
+        apply_operations(plan, ops(*batch))
+    assert f"не может быть больше {MAX_DEPENDENCIES} связей" in exc.value.message

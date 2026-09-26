@@ -82,3 +82,15 @@ test("derives conflict pairs from overallocated_with, deduped and only within th
 test("returns no groups for an empty plan", () => {
   expect(computeResourceSummary(plan([]))).toEqual([]);
 });
+
+test("groups assignees case-insensitively, like the backend overallocation check", () => {
+  const summary = computeResourceSummary(
+    plan([
+      task({ id: 1, assignee: "Иван Петров", overallocated_with: [2] }),
+      task({ id: 2, assignee: "иван петров ", overallocated_with: [1] }),
+    ]),
+  );
+  expect(summary).toEqual([
+    expect.objectContaining({ assignee: "Иван Петров", taskCount: 2, conflicts: [{ a: 1, b: 2 }] }),
+  ]);
+});

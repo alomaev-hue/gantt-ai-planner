@@ -45,3 +45,32 @@ def test_round_trip_preserves_plan_including_constraints_and_lags():
     assert sorted(map(key, p2.dependencies)) == sorted(map(key, res.plan.dependencies))
     sp2 = schedule(p2)
     assert [(t.start, t.end) for t in sp2.tasks] == [(t.start, t.end) for t in sp.tasks]
+
+
+def test_formula_like_text_is_exported_as_plain_string_and_round_trips():
+    plan = build_demo_plan(TODAY)
+    res = apply_operations(
+        plan,
+        operations_adapter.validate_python(
+            [
+                {
+                    "op": "update_task",
+                    "id": 1,
+                    "name": '=HYPERLINK("http://evil")',
+                    "description": "=1+1",
+                    "assignee": "=cmd|' /C calc'!A0",
+                }
+            ]
+        ),
+    )
+    data = export_plan_xlsx(res.scheduled)
+    ws = load_workbook(BytesIO(data))["План"]
+    for cell in ws[2][1:4]:
+        assert cell.data_type == "s", cell.value
+        assert cell.value.startswith("=")
+    imported = parse_plan_xlsx(data, res.scheduled.project_start)
+    assert imported.ok, imported.errors
+    task = imported.plan.tasks[0]
+    assert task.name == '=HYPERLINK("http://evil")'
+    assert task.description == "=1+1"
+    assert task.assignee == "=cmd|' /C calc'!A0"

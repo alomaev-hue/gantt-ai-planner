@@ -3,10 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, ApiError } from "@/api/client";
 import type { ScheduledPlan, ScheduledTask } from "@/api/types";
-import { PLAN_KEY } from "@/hooks/usePlan";
+import { cachedPlanVersion, PLAN_KEY, refetchOnConflict } from "@/hooks/usePlan";
 import { formatRu } from "@/lib/dates";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { buildTaskOps, formFromTask, rebaseForm, validateTaskForm, type TaskForm } from "./taskOps";
+import { buildTaskOps, formFromTask, needsRebase, rebaseForm, validateTaskForm, type TaskForm } from "./taskOps";
 import { TaskHistory } from "./TaskHistory";
 
 const ASSIGNEE_DATALIST_ID = "task-modal-assignees";
@@ -58,8 +58,7 @@ export function TaskModal({
       setState({ taskId: task.id, form: seeded, baseline: seeded, error: null });
     } else {
       const fresh = formFromTask(task);
-      const staleBaseline = (Object.keys(fresh) as (keyof TaskForm)[]).some((key) => fresh[key] !== state.baseline[key]);
-      if (staleBaseline) {
+      if (needsRebase(state.form, state.baseline, fresh)) {
         const rebased = rebaseForm(state.form, state.baseline, fresh);
         setState({ taskId: task.id, form: rebased.form, baseline: rebased.baseline, error: state.error });
       }
@@ -100,12 +99,15 @@ export function TaskModal({
     setSaving(true);
     setError(null);
     try {
-      const res = await api.applyOps(ops);
+      const res = await api.applyOps(ops, cachedPlanVersion(queryClient));
       queryClient.setQueryData(PLAN_KEY, res);
       toast.success(res.summary);
       res.warnings.forEach((warning) => toast.warning(warning));
       onOpenChange(false);
     } catch (err) {
+      // On a version conflict the refetch rebases the untouched fields; the user's own edits
+      // stay in the form so they can review against the fresh values and save again.
+      refetchOnConflict(queryClient, err);
       setError(err instanceof ApiError ? err.message : "Не удалось сохранить изменения");
     } finally {
       setSaving(false);

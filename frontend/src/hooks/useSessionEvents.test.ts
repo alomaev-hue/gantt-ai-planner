@@ -20,3 +20,19 @@ test("whole-plan replacements (import, reset) highlight nothing", () => {
   }
   expect(parsePlanChanged(JSON.stringify({ type: "plan_changed", source: "agent", changed_task_ids: [3] }))).toEqual([3]);
 });
+
+test("parsePlanVersion reads the version or null", async () => {
+  const { parsePlanVersion } = await import("./useSessionEvents");
+  expect(parsePlanVersion(JSON.stringify({ type: "plan_changed", version: 7 }))).toBe(7);
+  expect(parsePlanVersion(JSON.stringify({ type: "plan_changed" }))).toBeNull();
+  expect(parsePlanVersion("nope")).toBeNull();
+});
+
+test("shouldRefetchPlan skips only the event for the version already in the cache", async () => {
+  const { shouldRefetchPlan } = await import("./useSessionEvents");
+  expect(shouldRefetchPlan(6, 6)).toBe(false); // this tab's own apply: response already cached
+  expect(shouldRefetchPlan(5, 6)).toBe(true); // someone else's change
+  expect(shouldRefetchPlan(5, 4)).toBe(true); // someone else's undo: lower version, still new
+  expect(shouldRefetchPlan(undefined, 6)).toBe(true);
+  expect(shouldRefetchPlan(6, null)).toBe(true);
+});

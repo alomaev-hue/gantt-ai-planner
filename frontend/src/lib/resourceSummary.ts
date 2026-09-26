@@ -46,16 +46,20 @@ export function ruPlural(n: number, one: string, few: string, many: string): str
 }
 
 export function computeResourceSummary(plan: ScheduledPlan): ResourceSummary[] {
-  const groups = new Map<string | null, ScheduledTask[]>();
+  // Grouped the way the backend scheduler groups for overallocation (trimmed, case-folded), so
+  // «Иван Петров» and «иван петров» are one row whose conflict pairs are within its own tasks
+  // rather than two rows that each drop the other's ids. The first spelling seen is displayed.
+  const groups = new Map<string | null, { assignee: string | null; tasks: ScheduledTask[] }>();
   for (const task of plan.tasks) {
-    const key = task.assignee?.trim() || null;
-    const list = groups.get(key);
-    if (list) list.push(task);
-    else groups.set(key, [task]);
+    const display = task.assignee?.trim() || null;
+    const key = display === null ? null : display.toLocaleLowerCase("ru");
+    const group = groups.get(key);
+    if (group) group.tasks.push(task);
+    else groups.set(key, { assignee: display, tasks: [task] });
   }
 
   const summaries: ResourceSummary[] = [];
-  for (const [assignee, tasks] of groups) {
+  for (const { assignee, tasks } of groups.values()) {
     const starts = tasks.map((t) => t.start).sort();
     const ends = tasks.map((t) => t.end).sort();
     summaries.push({

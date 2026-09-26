@@ -11,6 +11,7 @@ STATUS = {
     "cycle": 422,
     "confirmation_required": 409,
     "agent_busy": 409,
+    "version_conflict": 409,
     "nothing_to_undo": 409,
     "nothing_to_redo": 409,
     "rate_limited": 429,

@@ -1,4 +1,4 @@
-import { buildTaskOps, formFromTask, rebaseForm, validateTaskForm } from "./taskOps";
+import { buildTaskOps, formFromTask, needsRebase, rebaseForm, validateTaskForm, type TaskForm } from "./taskOps";
 import type { ScheduledTask } from "@/api/types";
 
 const task: ScheduledTask = {
@@ -83,4 +83,33 @@ test("rebaseForm is a no-op when the fresh values match the baseline", () => {
   const result = rebaseForm(form, baseline, baseline);
   expect(result.form).toEqual(form);
   expect(result.baseline).toEqual(baseline);
+});
+
+const base: TaskForm = { name: "A", description: "", assignee: "", duration: 3, constraint: null };
+
+test("needsRebase is true when an untouched field changed server-side", () => {
+  const form = { ...base, name: "A edited" };
+  expect(needsRebase(form, base, { ...base, duration: 5 })).toBe(true);
+});
+
+test("needsRebase is false when only a field the user is editing changed server-side", () => {
+  // rebaseForm would leave `name` alone in both form and baseline, so reporting this as stale
+  // would re-trigger the render-time setState forever ("Too many re-renders").
+  const form = { ...base, name: "A edited" };
+  const fresh = { ...base, name: "A renamed elsewhere" };
+  expect(needsRebase(form, base, fresh)).toBe(false);
+  const rebased = rebaseForm(form, base, fresh);
+  expect(needsRebase(rebased.form, rebased.baseline, fresh)).toBe(false);
+});
+
+test("needsRebase is false when the server snapshot matches the baseline", () => {
+  expect(needsRebase({ ...base, name: "x" }, base, { ...base })).toBe(false);
+});
+
+test("after a rebase the fresh snapshot no longer needs one", () => {
+  const form = { ...base, name: "A edited" };
+  const fresh = { ...base, duration: 5, name: "A renamed elsewhere" };
+  const rebased = rebaseForm(form, base, fresh);
+  expect(rebased.form).toEqual({ ...base, name: "A edited", duration: 5 });
+  expect(needsRebase(rebased.form, rebased.baseline, fresh)).toBe(false);
 });

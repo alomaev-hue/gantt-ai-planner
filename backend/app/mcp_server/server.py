@@ -104,9 +104,11 @@ def build_mcp(
         for t in sp.tasks:
             if not t.assignee or (assignee and assignee.casefold() not in t.assignee.casefold()):
                 continue
-            p = people.setdefault(
-                t.assignee, {"assignee": t.assignee, "tasks": [], "conflicts": []}
-            )
+            # Same grouping key as the scheduler's overallocation check (strip + casefold), so
+            # «Иван Петров» and «иван петров» are one person whose conflicts point at tasks
+            # in their own list, not at a phantom second person.
+            key = t.assignee.strip().casefold()
+            p = people.setdefault(key, {"assignee": t.assignee, "tasks": [], "conflicts": []})
             p["tasks"].append({"id": t.id, "start": t.start.isoformat(), "end": t.end.isoformat()})
             for other in t.overallocated_with:
                 pair = sorted((t.id, other))

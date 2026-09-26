@@ -1,3 +1,4 @@
+import asyncio
 import re
 import uuid
 from datetime import date
@@ -19,6 +20,7 @@ from app.api.schemas import (
     ImportFailure,
     ImportSuccess,
     PlanResponse,
+    VersionedRequest,
     to_plan_response,
 )
 from app.excel.export import export_plan_xlsx
@@ -68,7 +70,9 @@ async def apply_operations(
     request: Request, body: ApplyRequest, session_id: uuid.UUID = Depends(require_session)
 ) -> ApplyResponse:
     service = get_service(request)
-    outcome = await service.apply(session_id, body.ops, source="user")
+    outcome = await service.apply(
+        session_id, body.ops, source="user", expected_version=body.expected_version
+    )
     return ApplyResponse(
         version=outcome.state.version,
         can_undo=outcome.state.can_undo,
@@ -83,16 +87,26 @@ async def apply_operations(
 
 
 @router.post("/undo", dependencies=[Depends(check_origin)])
-async def undo(request: Request, session_id: uuid.UUID = Depends(require_session)) -> PlanResponse:
+async def undo(
+    request: Request,
+    body: VersionedRequest | None = None,
+    session_id: uuid.UUID = Depends(require_session),
+) -> PlanResponse:
     service = get_service(request)
-    state = await service.undo(session_id)
+    expected = body.expected_version if body else None
+    state = await service.undo(session_id, expected_version=expected)
     return to_plan_response(state, service.locks.is_busy(session_id))
 
 
 @router.post("/redo", dependencies=[Depends(check_origin)])
-async def redo(request: Request, session_id: uuid.UUID = Depends(require_session)) -> PlanResponse:
+async def redo(
+    request: Request,
+    body: VersionedRequest | None = None,
+    session_id: uuid.UUID = Depends(require_session),
+) -> PlanResponse:
     service = get_service(request)
-    state = await service.redo(session_id)
+    expected = body.expected_version if body else None
+    state = await service.redo(session_id, expected_version=expected)
     return to_plan_response(state, service.locks.is_busy(session_id))
 
 
@@ -115,7 +129,9 @@ async def import_plan(
     data = await file.read(limit + 1)
     if len(data) > limit:
         raise FileTooLarge(f"Файл больше {settings.max_upload_mb} МБ")
-    result = parse_plan_xlsx(data, project_start)
+    # CPU-bound (zip inflate + openpyxl scan of up to 5000 rows): off the event loop, like
+    # `apply`, so other sessions' SSE heartbeats and /healthz don't stall behind one upload.
+    result = await asyncio.to_thread(parse_plan_xlsx, data, project_start)
     if not result.ok or result.plan is None:
         body = ImportFailure(ok=False, errors=result.errors, warnings=result.warnings)
         return JSONResponse(body.model_dump(mode="json"), status_code=422)

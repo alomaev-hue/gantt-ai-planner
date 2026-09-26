@@ -75,6 +75,18 @@ export function buildTaskOps(
   return ops;
 }
 
+// Whether a refetched `fresh` snapshot of the same task should trigger `rebaseForm`. Only fields
+// the user has NOT touched (`form[key] === baseline[key]`) count: `rebaseForm` leaves a field
+// the user is editing alone, so if that same field also changed server-side the baseline would
+// stay "stale" forever and a render-time `setState` on it would loop until React throws
+// "Too many re-renders". Such a field is deliberately ignored here; the version precondition on
+// save (`expected_version`) is what surfaces that conflict to the user.
+export function needsRebase(form: TaskForm, baseline: TaskForm, fresh: TaskForm): boolean {
+  return (Object.keys(fresh) as (keyof TaskForm)[]).some(
+    (key) => form[key] === baseline[key] && fresh[key] !== baseline[key],
+  );
+}
+
 // Carries a `baseline` (the form fields as last known from the server) forward when the same
 // task refetches with new values: any field the user hasn't edited yet (`form[field] ===
 // baseline[field]`) picks up the fresh server value in both `form` and `baseline`; a field the

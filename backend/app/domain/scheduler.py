@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.calendar import add_workdays, next_workday, workday_diff
 from app.domain.errors import CycleError, PlanValidationError
-from app.domain.models import Dependency, Plan, Task
+from app.domain.models import MAX_DEPENDENCIES, Dependency, Plan, Task
 
 
 class ScheduledTask(Task):
@@ -49,6 +49,8 @@ def validate_plan(plan: Plan) -> None:
         if task.id in ids:
             raise PlanValidationError(f"№ {task.id} повторяется")
         ids.add(task.id)
+    if len(plan.dependencies) > MAX_DEPENDENCIES:
+        raise PlanValidationError(f"В плане не может быть больше {MAX_DEPENDENCIES} связей")
     seen: set[tuple[int, int]] = set()
     for d in plan.dependencies:
         for ref in (d.predecessor_id, d.successor_id):

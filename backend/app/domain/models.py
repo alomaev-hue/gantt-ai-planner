@@ -3,6 +3,11 @@ from datetime import date
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MAX_TASKS = 500
+# Dependencies are stored in every snapshot (up to 50 versions) and walked by every schedule():
+# without a cap one session could build a dense DAG of ~125k edges over 500 tasks. 2000 is
+# ~4 predecessors per task on the largest plan, far above any real plan.
+MAX_DEPENDENCIES = 2000
+MAX_LAG = 365
 
 
 class Task(BaseModel):
@@ -32,7 +37,7 @@ class Dependency(BaseModel):
 
     predecessor_id: int
     successor_id: int
-    lag: int = Field(default=0, ge=0, le=365)
+    lag: int = Field(default=0, ge=0, le=MAX_LAG)
 
 
 class Plan(BaseModel):

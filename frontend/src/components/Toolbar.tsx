@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Download, Link2, Monitor, Moon, MoreVertical, Redo2, RotateCcw, Sun, Undo2, Upload } from "lucide-react";
 import { api, ApiError, exportUrl } from "@/api/client";
 import type { PlanResponse } from "@/api/types";
-import { PLAN_KEY } from "@/hooks/usePlan";
+import { cachedPlanVersion, PLAN_KEY, refetchOnConflict } from "@/hooks/usePlan";
 import { useMeta } from "@/hooks/useMeta";
 import type { ThemeMode } from "@/hooks/useTheme";
 import { deleteMyData } from "@/lib/deleteMyData";
@@ -56,12 +56,18 @@ export function Toolbar({
   const [mcpOpen, setMcpOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
-  const runPlanAction = async (action: () => Promise<PlanResponse>, errorMessage: string) => {
+  // Undo/redo carry the version this tab is showing: undoing on top of a plan another tab (or
+  // the agent) has already moved would silently revert *their* change, so the backend refuses.
+  const runPlanAction = async (
+    action: (expectedVersion?: number) => Promise<PlanResponse>,
+    errorMessage: string,
+  ) => {
     setPending(true);
     try {
-      const res = await action();
+      const res = await action(cachedPlanVersion(queryClient));
       queryClient.setQueryData(PLAN_KEY, res);
     } catch (err) {
+      refetchOnConflict(queryClient, err);
       toast.error(err instanceof ApiError ? err.message : errorMessage);
     } finally {
       setPending(false);

@@ -164,3 +164,57 @@ async def test_delete_session_forgets_lock_and_bus_entries(service):
     assert sid not in service.bus._subs
     async with service.sessionmaker() as db:
         assert await repo.get_session(db, sid) is None
+
+
+async def test_set_project_start_without_task_moves_still_creates_version(service):
+    from app.domain.models import Plan
+
+    _, sid = await service.create_session()
+    await service.replace(
+        sid, Plan(project_start=date(2026, 9, 21)), source="import", summary="Пустой план"
+    )
+    queue = service.bus.subscribe(sid)
+    out = await service.apply(
+        sid, ops({"op": "set_project_start", "date": "2026-10-05"}), source="user"
+    )
+    assert out.changes == []
+    assert out.state.version == 3 and out.state.can_undo
+    assert out.state.plan.project_start == date(2026, 10, 5)
+    assert out.summary == "Старт проекта перенесён на 05.10.2026"
+    assert queue.get_nowait()["version"] == 3
+    assert (await service.get_state(sid)).plan.project_start == date(2026, 10, 5)
+
+
+async def test_set_project_start_that_moves_tasks_mentions_both(service):
+    _, sid = await service.create_session()
+    out = await service.apply(
+        sid, ops({"op": "set_project_start", "date": "2026-10-05"}), source="user"
+    )
+    assert out.changes
+    assert out.summary.startswith("Изменено задач")
+    assert out.summary.endswith("; старт проекта перенесён на 05.10.2026")
+
+
+async def test_stale_expected_version_is_rejected(service):
+    from app.services.errors import VersionConflict
+
+    _, sid = await service.create_session()
+    await service.apply(sid, ops({"op": "move_task", "id": 1, "shift_days": 1}), source="agent")
+    with pytest.raises(VersionConflict) as exc:
+        await service.apply(
+            sid,
+            ops({"op": "update_task", "id": 1, "name": "Старое имя"}),
+            source="user",
+            expected_version=1,
+        )
+    assert exc.value.details == {"expected_version": 1, "current_version": 2}
+    assert (await service.get_state(sid)).plan.tasks[0].name != "Старое имя"
+    with pytest.raises(VersionConflict):
+        await service.undo(sid, expected_version=1)
+    # Matching version passes; None skips the check.
+    out = await service.apply(
+        sid, ops({"op": "update_task", "id": 1, "name": "Новое"}), source="user", expected_version=2
+    )
+    assert out.state.version == 3
+    assert (await service.undo(sid, expected_version=3)).version == 2
+    assert (await service.redo(sid)).version == 3
