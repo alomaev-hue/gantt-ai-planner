@@ -75,3 +75,31 @@
 .wx-progress-marker {
   display: none;
 }
+
+/* The narrow "№" and "Дн." header cells were truncated to "N…"/"Д…": each SVAR header cell has
+   12px of left padding, a column-resize grip and an (empty unless sorted) sort slot that still
+   reserves a 15px left margin. These two columns hold fixed-width content and don't need
+   resizing, so drop the grip and even out the padding; an empty sort slot takes no room in any
+   column. `!important` for the same reason as the bar colors above: SVAR's own hashed-class rules
+   outrank a plain selector. */
+.wx-h-row .wx-cell.wx-col-id,
+.wx-h-row .wx-cell.wx-col-workDays {
+  padding-left: 4px !important;
+}
+.wx-h-row .wx-cell.wx-col-id .wx-grip,
+.wx-h-row .wx-cell.wx-col-workDays .wx-grip {
+  display: none;
+}
+.wx-h-row .wx-sort:empty {
+  margin-left: 0 !important;
+}
+
+/* Tasks are flat (no summary/child hierarchy), but SVAR's task-name column still reserves ~30px
+   for a tree expand/collapse toggle that never appears. Drop the placeholder so names get that
+   room, and line them up with the "Задача" header text (12px, the header cell's padding). */
+.wx-cell.wx-col-text .wx-toggle-placeholder {
+  display: none !important;
+}
+.wx-cell.wx-col-text .wx-content {
+  padding-left: 9px !important;
+}
