@@ -1,5 +1,5 @@
 import type { ScheduledPlan } from "@/api/types";
-import { addDays, parseISODate } from "@/lib/dates";
+import { addDays, parseISODate, toISODate } from "@/lib/dates";
 import type { IScaleConfig } from "@svar-ui/react-gantt";
 
 export type Zoom = "day" | "week" | "month";
@@ -83,3 +83,16 @@ export const ZOOM_PRESETS: Record<Zoom, { scales: IScaleConfig[]; cellWidth: num
     cellWidth: 130,
   },
 };
+
+// SVAR `highlightTime` callback body: CSS classes for a timeline day column (header cell and the
+// chart body column). Day scale only — a week or month cell spans many days, so there's no single
+// column to mark. "gantt-project-start" draws the line the whole schedule is counted from: tasks
+// without predecessors start on the project start date. (SVAR's own `markers` would label it,
+// but the MIT build's store resets them — a PRO feature.)
+export function highlightDay(d: Date, unit: string, projectStart: string, today: Date): string {
+  if (unit !== "day") return "";
+  const classes: string[] = [];
+  if (d.toDateString() === today.toDateString()) classes.push("gantt-today");
+  if (toISODate(d) === projectStart) classes.push("gantt-project-start");
+  return classes.join(" ");
+}

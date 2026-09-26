@@ -4,7 +4,7 @@ import "@svar-ui/react-gantt/all.css";
 import "./wx-icons/wx-icons.css";
 import "./gantt.css";
 import { toast } from "sonner";
-import { ZOOM_PRESETS, closestTaskId, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
+import { ZOOM_PRESETS, closestTaskId, highlightDay, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
 import { interpretBarChange, linkToOperation } from "./interactions";
 import { RuLocale } from "./locale";
 import type { Operation, ScheduledPlan } from "@/api/types";
@@ -214,6 +214,12 @@ export function GanttView(props: {
   // properties, so the dark toggle picks the whole component rather than restyling it.
   // `fonts={false}` below: by default they inject SVAR's CDN icon/font stylesheet, which the
   // production CSP blocks — the icon font is self-hosted instead (wx-icons/wx-icons.css).
+  const projectStart = props.plan.project_start;
+  const highlightTime = useCallback(
+    (d: Date, unit: string) => highlightDay(d, unit, projectStart, new Date()),
+    [projectStart],
+  );
+
   const ThemeWrapper = props.dark ? WillowDark : Willow;
 
   return (
@@ -237,9 +243,7 @@ export function GanttView(props: {
               taskTypes={TASK_TYPES}
               readonly={props.readOnly}
               {...ZOOM_PRESETS[props.zoom]}
-              highlightTime={(d: Date, unit: string) =>
-                unit === "day" && d.toDateString() === new Date().toDateString() ? "gantt-today" : ""
-              }
+              highlightTime={highlightTime}
             />
           </Tooltip>
         </ThemeWrapper>

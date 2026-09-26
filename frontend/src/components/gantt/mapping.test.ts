@@ -1,4 +1,4 @@
-import { closestTaskId, toSvarLinks, toSvarTasks } from "./mapping";
+import { closestTaskId, highlightDay, toSvarLinks, toSvarTasks } from "./mapping";
 import type { ScheduledPlan } from "@/api/types";
 
 const plan: ScheduledPlan = {
@@ -59,4 +59,17 @@ test("closestTaskId ignores a click on a link connector so link-drawing isn't in
   dot.className = "wx-link wx-right wx-target";
   row.appendChild(dot);
   expect(closestTaskId(dot)).toBeNull();
+});
+
+describe("highlightDay", () => {
+  const today = new Date(2026, 8, 26);
+  it("marks the project start and today in the day scale", () => {
+    expect(highlightDay(new Date(2026, 8, 7), "day", "2026-09-07", today)).toBe("gantt-project-start");
+    expect(highlightDay(new Date(2026, 8, 26), "day", "2026-09-07", today)).toBe("gantt-today");
+    expect(highlightDay(new Date(2026, 8, 26), "day", "2026-09-26", today)).toBe("gantt-today gantt-project-start");
+    expect(highlightDay(new Date(2026, 8, 8), "day", "2026-09-07", today)).toBe("");
+  });
+  it("marks nothing in coarser scales (a week/month cell isn't one day)", () => {
+    expect(highlightDay(new Date(2026, 8, 7), "week", "2026-09-07", today)).toBe("");
+  });
 });

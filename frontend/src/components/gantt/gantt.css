@@ -19,6 +19,7 @@
   --gantt-changed: #aa3bff;
   --gantt-changed-bg: rgba(170, 59, 255, 0.16);
   --gantt-today: rgba(170, 59, 255, 0.08);
+  --gantt-start: #16a34a;
 }
 
 .dark {
@@ -27,6 +28,7 @@
   --gantt-changed: #c084fc;
   --gantt-changed-bg: rgba(192, 132, 252, 0.2);
   --gantt-today: rgba(192, 132, 252, 0.12);
+  --gantt-start: #4ade80;
 }
 
 /* SVAR's themes default to Open Sans / Roboto, declared with @font-face rules pointing at its CDN
@@ -68,6 +70,22 @@
 /* highlightTime(date, "day") returns "gantt-today" for the current day column. */
 .gantt-today {
   background: var(--gantt-today);
+}
+
+/* …and "gantt-project-start" for the project's start date: a line along the left edge of that
+   day's column — where the schedule is counted from. */
+.gantt-project-start {
+  box-shadow: inset 2px 0 0 var(--gantt-start);
+}
+
+/* In the chart body SVAR renders each highlighted day as a div inside .wx-gantt-holidays with only
+   an inline left/width: the positioning comes from its own `.wx-weekend` class. Our classes need
+   the same, or the column collapses to zero height at the chart's left edge (so the "today" tint
+   never showed below the header). */
+.wx-gantt-holidays > .gantt-today,
+.wx-gantt-holidays > .gantt-project-start {
+  position: absolute;
+  height: 100%;
 }
 
 /* Progress isn't part of our domain model (ScheduledTask has no such field) — hide the handle so
