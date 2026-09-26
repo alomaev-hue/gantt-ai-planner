@@ -39,3 +39,13 @@ async def test_known_api_routes_still_work(spa_client):
     assert (await spa_client.get("/api/meta")).status_code == 200
     assert (await spa_client.get("/api/openapi.json")).status_code == 200
     assert (await spa_client.get("/healthz")).status_code == 200
+
+
+async def test_head_is_answered_like_get_for_spa_paths(spa_client):
+    # Uptime monitors and link checkers probe with HEAD; a 405 on "/" looks like an outage.
+    for path in ("/", "/some/client/route", "/favicon.svg"):
+        r = await spa_client.head(path)
+        assert r.status_code == 200, path
+        assert r.content == b""
+    r = await spa_client.head("/api/nope")
+    assert r.status_code == 404

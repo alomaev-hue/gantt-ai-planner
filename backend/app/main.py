@@ -175,11 +175,13 @@ def create_app(
     # A wrong method on an existing API path also lands here (404 instead of 405).
     @app.api_route(
         "/api/{rest:path}",
-        methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
         include_in_schema=False,
     )
     @app.api_route(
-        "/api", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False
+        "/api",
+        methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+        include_in_schema=False,
     )
     async def unknown_api(rest: str = "") -> JSONResponse:
         return error_response("not_found", "Нет такого метода API", status=404)
@@ -195,7 +197,8 @@ def _mount_spa(app: FastAPI, settings: Settings) -> None:
         return
     root = Path(settings.static_dir).resolve()
 
-    @app.get("/{path:path}", include_in_schema=False)
+    # HEAD too: uptime monitors and link checkers probe "/" with it (FileResponse omits the body).
+    @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def spa(path: str) -> FileResponse:
         candidate = (root / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(root):
