@@ -8,3 +8,10 @@ def test_both_system_blocks_are_cache_breakpoints():
     assert blocks[0]["text"] == STATIC_SYSTEM_PROMPT
     assert blocks[1]["text"].endswith("1 | Анализ")
     assert all(b.get("cache_control") == {"type": "ephemeral"} for b in blocks)
+
+
+def test_replies_are_plain_text_with_russian_dates():
+    # The chat renders text as-is: Markdown (**bold**) showed up as literal asterisks, and the
+    # model echoed ISO dates (2026-11-20) instead of the app's DD.MM.YYYY.
+    assert "без Markdown" in STATIC_SYSTEM_PROMPT
+    assert "ДД.ММ.ГГГГ" in STATIC_SYSTEM_PROMPT
