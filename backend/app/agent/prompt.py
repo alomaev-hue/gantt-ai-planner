@@ -23,7 +23,14 @@ STATIC_SYSTEM_PROMPT = """Ты — ассистент планировщика �
 
 
 def build_system(plan_table: str) -> list[dict[str, Any]]:
+    # Two cache breakpoints (plus one on the last tool, see AnthropicLLM): the static rules are
+    # shared by every turn, the plan table by every LLM call within one turn (up to
+    # max_iterations re-sends, tens of thousands of tokens on a large plan).
     return [
         {"type": "text", "text": STATIC_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
-        {"type": "text", "text": "Текущий план (на начало хода):\n" + plan_table},
+        {
+            "type": "text",
+            "text": "Текущий план (на начало хода):\n" + plan_table,
+            "cache_control": {"type": "ephemeral"},
+        },
     ]
