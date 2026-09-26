@@ -99,4 +99,16 @@ test.describe("phone (390px)", () => {
     expect(visibleBars).toBeGreaterThan(0);
     expect(await csp.violations()).toEqual([]);
   });
+
+  test("switching tabs keeps the chat mounted (a running turn is not aborted)", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Чат" }).click();
+    const input = page.getByRole("textbox", { name: /сообщение/i });
+    await input.fill("черновик, который не должен пропасть");
+    await page.getByRole("button", { name: "Диаграмма" }).click();
+    await expect(page.locator(".wx-bar").first()).toBeVisible();
+    await page.getByRole("button", { name: "Чат" }).click();
+    // A remounted ChatPanel would have lost its local state (and aborted any in-flight turn).
+    await expect(input).toHaveValue("черновик, который не должен пропасть");
+  });
 });

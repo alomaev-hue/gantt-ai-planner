@@ -47,51 +47,47 @@ export function SplitLayout({ left, right }: { left: ReactNode; right: ReactNode
 
   useEffect(() => () => stopDragging(), [stopDragging]);
 
-  if (isMobile) {
-    return (
-      <div className="flex h-full min-h-0 flex-col">
+  // One element tree for both layouts, with both panes always mounted: on a phone the inactive
+  // tab's pane is only `hidden`. Unmounting it would abort work in progress: ChatPanel cancels
+  // its streaming request on unmount, which kills a running agent turn (the natural phone flow
+  // is to send a message, then switch to the chart to watch it change). Keeping the children at
+  // the same positions also means crossing the breakpoint (rotation, resize) remounts nothing.
+  const tabClass = (active: boolean) =>
+    cn(
+      "flex-1 px-3 py-2 text-sm font-medium",
+      active ? "border-b-2 border-primary text-foreground" : "text-muted-foreground",
+    );
+
+  return (
+    <div ref={containerRef} className={cn("flex h-full min-h-0", isMobile && "flex-col")}>
+      {isMobile && (
         <div className="flex border-b border-border">
-          <button
-            type="button"
-            className={cn(
-              "flex-1 px-3 py-2 text-sm font-medium",
-              tab === "chart" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground",
-            )}
-            onClick={() => setTab("chart")}
-          >
+          <button type="button" className={tabClass(tab === "chart")} onClick={() => setTab("chart")}>
             Диаграмма
           </button>
-          <button
-            type="button"
-            className={cn(
-              "flex-1 px-3 py-2 text-sm font-medium",
-              tab === "chat" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground",
-            )}
-            onClick={() => setTab("chat")}
-          >
+          <button type="button" className={tabClass(tab === "chat")} onClick={() => setTab("chat")}>
             Чат
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto">{tab === "chart" ? left : right}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={containerRef} className="flex h-full min-h-0">
+      )}
       <div
-        className="min-h-0 overflow-auto"
-        style={{ width: leftWidth ?? `${DEFAULT_LEFT_RATIO * 100}%`, flexShrink: 0 }}
+        className={cn("min-h-0 overflow-auto", isMobile && "flex-1")}
+        style={isMobile ? undefined : { width: leftWidth ?? `${DEFAULT_LEFT_RATIO * 100}%`, flexShrink: 0 }}
+        hidden={isMobile && tab !== "chart"}
       >
         {left}
       </div>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-ring"
-        onPointerDown={startDragging}
-      />
-      <div className="min-h-0 flex-1 overflow-auto">{right}</div>
+      {!isMobile && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          className="w-1 shrink-0 cursor-col-resize bg-border hover:bg-ring"
+          onPointerDown={startDragging}
+        />
+      )}
+      <div className="min-h-0 flex-1 overflow-auto" hidden={isMobile && tab !== "chat"}>
+        {right}
+      </div>
     </div>
   );
 }
