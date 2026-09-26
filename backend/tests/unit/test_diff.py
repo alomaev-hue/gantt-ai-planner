@@ -50,3 +50,15 @@ def test_diff_detects_created_deleted_and_field_changes():
 
 def test_summary_without_changes():
     assert summarize_changes([]) == "Без изменений"
+
+
+def test_summary_leads_with_the_nonzero_count():
+    from app.domain.diff import Change
+
+    created = Change(task_id=5, task_name="Новая", field="created", after="Новая")
+    deleted = Change(task_id=6, task_name="Старая", field="deleted", before="Старая")
+    moved = Change(task_id=1, task_name="A", field="start", before="2026-09-21", after="2026-09-22")
+    assert summarize_changes([created]) == "Добавлено задач: 1"
+    assert summarize_changes([deleted]) == "Удалено задач: 1"
+    assert summarize_changes([created, deleted]) == "Добавлено задач: 1, удалено: 1"
+    assert summarize_changes([moved, created]) == "Изменено задач: 1, добавлено: 1"

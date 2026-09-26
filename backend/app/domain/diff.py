@@ -111,9 +111,10 @@ def summarize_changes(changes: list[Change]) -> str:
     changed = {c.task_id for c in changes} - created - deleted
     if not changes:
         return "Без изменений"
-    parts = [f"Изменено задач: {len(changed)}"]
-    if created:
-        parts.append(f"добавлено: {len(created)}")
-    if deleted:
-        parts.append(f"удалено: {len(deleted)}")
-    return ", ".join(parts)
+    parts: list[str] = []
+    for verb, ids in (("изменено", changed), ("добавлено", created), ("удалено", deleted)):
+        if ids:
+            # Only the leading part names the unit: "Добавлено задач: 1, удалено: 2".
+            parts.append(f"{verb}{'' if parts else ' задач'}: {len(ids)}")
+    text = ", ".join(parts)
+    return text[0].upper() + text[1:]
