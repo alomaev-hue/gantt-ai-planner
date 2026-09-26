@@ -80,7 +80,8 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+  /* No webfonts: "Roboto" here would pick up SVAR's CDN @font-face on systems without system-ui. */
+  font: 15px/1.5 system-ui, "Segoe UI", sans-serif;
 }
 
 #root {

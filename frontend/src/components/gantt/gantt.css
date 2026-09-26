@@ -29,6 +29,14 @@
   --gantt-today: rgba(192, 132, 252, 0.12);
 }
 
+/* SVAR's themes default to Open Sans / Roboto, declared with @font-face rules pointing at its CDN
+   (stripped from the build by vite.config.ts, blocked by the production CSP anyway): use the
+   app's own system font stack instead. */
+.wx-theme.wx-willow-theme,
+.wx-theme.wx-willow-dark-theme {
+  --wx-font-family: system-ui, "Segoe UI", sans-serif;
+}
+
 .wx-bar.critical {
   background: var(--gantt-critical) !important;
   border-color: var(--gantt-critical) !important;

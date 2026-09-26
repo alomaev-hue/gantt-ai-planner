@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Gantt, Tooltip, Willow, WillowDark, type IApi } from "@svar-ui/react-gantt";
 import "@svar-ui/react-gantt/all.css";
+import "./wx-icons/wx-icons.css";
 import "./gantt.css";
 import { toast } from "sonner";
 import { ZOOM_PRESETS, closestTaskId, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
@@ -197,6 +198,8 @@ export function GanttView(props: {
 
   // SVAR ships two skin wrappers (Willow / WillowDark) rather than reacting to CSS custom
   // properties, so the dark toggle picks the whole component rather than restyling it.
+  // `fonts={false}` below: by default they inject SVAR's CDN icon/font stylesheet, which the
+  // production CSP blocks — the icon font is self-hosted instead (wx-icons/wx-icons.css).
   const ThemeWrapper = props.dark ? WillowDark : Willow;
 
   return (
@@ -209,7 +212,7 @@ export function GanttView(props: {
       }}
     >
       <RuLocale>
-        <ThemeWrapper>
+        <ThemeWrapper fonts={false}>
           <Tooltip api={api ?? undefined} content={BarTooltip}>
             <Gantt
               init={init}
