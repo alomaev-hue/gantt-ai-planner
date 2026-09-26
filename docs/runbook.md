@@ -55,12 +55,17 @@
      GHCR) не сможет скачать образ: GitHub → профиль/организация →
      Packages → `gantt-ai-planner` → Package settings → Change
      visibility → Public;
-   - вписать реальный ключ Anthropic в
-     `/opt/gantt-planner/secrets/anthropic_api_key` (без переноса строки
-     в конце и не через аргумент команды — см. «Ключ Anthropic» в разделе 3).
-     Пока владелец не заполнил этот файл (bootstrap создаёт его пустым),
-     приложение работает в демо-режиме без LLM — `make_llm()` видит
-     пустой ключ, логирует это (без содержимого ключа) и отдаёт
+   - вписать реальный ключ LLM — по умолчанию (`LLM_PROVIDER=openrouter`,
+     который bootstrap уже прописал в `/opt/gantt-planner/.env`) это ключ
+     OpenRouter (`sk-or-v1-...`) в
+     `/opt/gantt-planner/secrets/openrouter_api_key`; если вместо этого
+     нужен настоящий ключ Anthropic — `secrets/anthropic_api_key` и
+     `LLM_PROVIDER=anthropic` в `.env` (без переноса строки в конце и не
+     через аргумент команды — см. «Ключ OpenRouter» / «Ключ Anthropic» и
+     «Переключение провайдера LLM» в разделе 3).
+     Пока владелец не заполнил нужный файл (bootstrap создаёт оба
+     пустыми), приложение работает в демо-режиме без LLM — `make_llm()`
+     видит пустой ключ, логирует это (без содержимого ключа) и отдаёт
      `FakeLLM` вместо `AnthropicLLM`, само приложение при этом не падает;
      текущий режим виден в ответе `GET /api/meta` (`llm_mode`) и
      значком в UI;
@@ -193,6 +198,56 @@ cd /opt/gantt-planner && docker compose -f compose.prod.yml up -d --force-recrea
 Старый ключ отозвать в консоли Anthropic после подтверждения, что новый
 работает.
 
+### Ключ OpenRouter
+
+По умолчанию (`LLM_PROVIDER=openrouter`) приложение использует именно этот
+секрет. Тот же принцип, что и для Anthropic (ключ не должен попасть ни в
+историю shell, ни в аргументы команд, ни на экран) — здесь как
+альтернативный вариант через `install` и `/dev/stdin`, без переменной
+окружения и без `read`:
+
+```bash
+cd /opt/gantt-planner
+install -m 0444 -o root -g root /dev/stdin secrets/openrouter_api_key
+# Вставить ключ (sk-or-v1-...) одной строкой без завершающего перевода
+# строки и нажать Ctrl+D (EOF). Ctrl+C прервёт без изменения файла.
+docker compose -f compose.prod.yml up -d --force-recreate app
+```
+Старый ключ отозвать в личном кабинете OpenRouter после подтверждения, что
+новый работает. Тот же приём (`install -m 0444 -o root -g root /dev/stdin
+<файл>` + вставка + Ctrl+D) годится и для `secrets/anthropic_api_key`
+вместо `read -rs` выше — оба способа не оставляют ключ в истории shell.
+
+### Переключение провайдера LLM
+
+Провайдер и модель заданы в `/opt/gantt-planner/.env` (`LLM_PROVIDER`,
+`LLM_MODEL`; читает их `compose.prod.yml` через `${LLM_PROVIDER:-openrouter}`
+/ `${LLM_MODEL:-anthropic/claude-sonnet-5}` — bootstrap прописывает эти
+значения по умолчанию при первом создании файла и не трогает `.env`, если
+он уже существует). Чтобы переключиться:
+
+```bash
+cd /opt/gantt-planner
+# Anthropic -> OpenRouter (или наоборот) — отредактировать .env,
+# например через sed, задав нужные значения:
+sed -i \
+  -e 's/^LLM_PROVIDER=.*/LLM_PROVIDER=openrouter/' \
+  -e 's/^LLM_MODEL=.*/LLM_MODEL=anthropic\/claude-sonnet-5/' \
+  .env
+docker compose -f compose.prod.yml up -d --force-recreate app
+```
+Убедиться, что соответствующий секрет (`secrets/openrouter_api_key` или
+`secrets/anthropic_api_key`) уже заполнен — иначе приложение молча уйдёт в
+демо-режим (см. раздел 1, п. 3). Текущий провайдер и модель видны в
+`GET /api/meta` (`llm_mode`, `model`) сразу после переключения.
+
+Отдельно поддержан и автоопределение: если в `secrets/anthropic_api_key`
+случайно оказался ключ OpenRouter (начинается с `sk-or-`) при
+`LLM_PROVIDER=anthropic`, приложение всё равно пойдёт через OpenRouter и
+один раз залогирует предупреждение (без содержимого ключа) — специально
+переключать `.env` в этом случае не обязательно, но лучше всё же явно
+выставить `LLM_PROVIDER=openrouter`, чтобы не полагаться на автоопределение.
+
 ### Пароли БД (`db_app_password`, `db_owner_password`, `pg_superuser_password`)
 
 Файл секрета — это то, что подставляется при следующем старте
@@ -289,9 +344,10 @@ docker compose -f compose.prod.yml exec -T db psql -U postgres -c \
 Если есть подозрение, что скомпрометирован ключ Anthropic, пароль БД,
 deploy-ключ или сам сервер — отзываем всё сразу, не по одному:
 
-1. **Anthropic**: отключить ключ в консоли Anthropic (лимит расходов на
-   нуле или удаление ключа), сгенерировать новый, положить по процедуре
-   из раздела 3.
+1. **Ключ LLM (Anthropic или OpenRouter, смотря какой активен —
+   `GET /api/meta`)**: отключить ключ в консоли соответствующего сервиса
+   (лимит расходов на нуле или удаление ключа), сгенерировать новый,
+   положить по процедуре из раздела 3.
 2. **Пароли БД**: сменить все три (`planner_app`, `planner_owner`,
    суперпользователь) по процедуре из раздела 3, даже если под
    подозрением только один.

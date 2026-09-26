@@ -94,10 +94,10 @@ step_compose_files() {
     install -m 0755 -o root -g root "$SCRIPT_DIR/initdb/10-roles.sh" "$APP_DIR/initdb/10-roles.sh"
 
     if [ ! -f "$APP_DIR/.env" ]; then
-        printf 'IMAGE_TAG=latest\n' > "$APP_DIR/.env"
+        printf 'IMAGE_TAG=latest\nLLM_PROVIDER=openrouter\nLLM_MODEL=anthropic/claude-sonnet-5\n' > "$APP_DIR/.env"
         chmod 0600 "$APP_DIR/.env"
         chown root:root "$APP_DIR/.env"
-        echo "    created $APP_DIR/.env with IMAGE_TAG=latest"
+        echo "    created $APP_DIR/.env with IMAGE_TAG=latest, LLM_PROVIDER=openrouter, LLM_MODEL=anthropic/claude-sonnet-5"
     else
         echo "    $APP_DIR/.env already exists, leaving it untouched"
     fi
@@ -128,6 +128,15 @@ step_secrets() {
         echo "    created empty $anthropic_file - the owner must fill in the real key before starting the app"
     else
         echo "    $anthropic_file already exists, leaving it untouched"
+    fi
+
+    echo "==> Ensuring openrouter_api_key secret placeholder exists"
+    openrouter_file="$SECRETS_DIR/openrouter_api_key"
+    if [ ! -f "$openrouter_file" ]; then
+        install -m 0444 -o root -g root /dev/null "$openrouter_file"
+        echo "    created empty $openrouter_file - the owner must fill in the real key before starting the app"
+    else
+        echo "    $openrouter_file already exists, leaving it untouched"
     fi
 }
 
@@ -167,7 +176,8 @@ main() {
     step_backup_cron
     echo "==> Bootstrap complete."
     echo "    Remaining manual steps:"
-    echo "      1. fill in $SECRETS_DIR/anthropic_api_key"
+    echo "      1. fill in $SECRETS_DIR/openrouter_api_key (default: LLM_PROVIDER=openrouter in"
+    echo "         $APP_DIR/.env) or $SECRETS_DIR/anthropic_api_key if using a real Anthropic key instead"
     echo "      2. add the CI deploy key to /home/$DEPLOY_USER/.ssh/authorized_keys (see step above)"
     echo "      3. point the gantt-ai-planner.duckdns.org A record at this host's IP"
     echo "      4. run the first deploy manually: set IMAGE_TAG=sha-<commit> in $APP_DIR/.env, then"

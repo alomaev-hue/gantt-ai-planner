@@ -30,6 +30,7 @@ services:
       SESSION_LIMIT_PER_IP_HOUR: "1000"
       CHAT_LIMIT_PER_IP_HOUR: "1000"
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       db: {condition: service_healthy}
   app:

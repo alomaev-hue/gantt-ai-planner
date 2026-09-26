@@ -20,9 +20,15 @@ class Settings(BaseSettings):
     public_origin: str = "http://localhost:8000"
     cookie_secure: bool = False
 
-    llm_provider: Literal["anthropic", "fake"] = "fake"
+    llm_provider: Literal["anthropic", "openrouter", "fake"] = "fake"
     llm_model: str = "claude-sonnet-5"
     anthropic_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
+    # None means "use the provider's own default" (api.anthropic.com for the anthropic
+    # SDK, or https://openrouter.ai/api when the effective provider is openrouter — see
+    # app.agent.llm.resolve_llm_base_url). Only needed to point at a different endpoint
+    # (e.g. a self-hosted OpenRouter-compatible gateway).
+    llm_base_url: str | None = None
     llm_max_tokens: int = 4096
 
     chat_limit_per_hour: int = 30

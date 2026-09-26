@@ -19,6 +19,8 @@ networks:
 secrets:
   anthropic_api_key:
     file: ./secrets/anthropic_api_key
+  openrouter_api_key:
+    file: ./secrets/openrouter_api_key
   db_app_password:
     file: ./secrets/db_app_password
   db_owner_password:
@@ -88,8 +90,8 @@ services:
       DB_NAME: planner
       DB_USER: planner_app
       SECRETS_DIR: /run/secrets
-      LLM_PROVIDER: anthropic
-      LLM_MODEL: claude-sonnet-5
+      LLM_PROVIDER: ${LLM_PROVIDER:-openrouter}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-sonnet-5}
       COOKIE_SECURE: "true"
       PUBLIC_ORIGIN: https://gantt-ai-planner.duckdns.org
       # The app publishes no ports: requests only arrive through Caddy on the edge network,
@@ -99,6 +101,7 @@ services:
       TRUST_PROXY: "true"
     secrets:
       - anthropic_api_key
+      - openrouter_api_key
       - source: db_app_password
         target: db_password
     read_only: true

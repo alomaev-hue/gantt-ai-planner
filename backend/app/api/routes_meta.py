@@ -9,13 +9,13 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from app.agent.llm import resolve_llm_mode
+from app.agent.llm import resolve_llm_mode, resolve_llm_model
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
 
 class MetaResponse(BaseModel):
-    llm_mode: Literal["anthropic", "fake"]
+    llm_mode: Literal["anthropic", "openrouter", "fake"]
     model: str | None
 
 
@@ -23,4 +23,5 @@ class MetaResponse(BaseModel):
 async def get_meta(request: Request) -> MetaResponse:
     settings = request.app.state.settings
     mode = resolve_llm_mode(settings)
-    return MetaResponse(llm_mode=mode, model=settings.llm_model if mode == "anthropic" else None)
+    model = resolve_llm_model(settings) if mode != "fake" else None
+    return MetaResponse(llm_mode=mode, model=model)
