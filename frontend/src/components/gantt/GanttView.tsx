@@ -219,7 +219,7 @@ export function GanttView(props: {
   return (
     <div
       ref={containerRef}
-      className="h-full min-h-0"
+      className="gantt-host h-full min-h-0"
       onClick={(e) => {
         const id = closestTaskId(e.target);
         if (id != null) handlers.current.onOpenTask(id);
