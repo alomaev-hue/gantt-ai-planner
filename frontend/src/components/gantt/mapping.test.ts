@@ -1,4 +1,4 @@
-import { closestTaskId, highlightDay, toSvarLinks, toSvarTasks } from "./mapping";
+import { closestTaskId, highlightDay, isDragEnd, toSvarLinks, toSvarTasks } from "./mapping";
 import type { ScheduledPlan } from "@/api/types";
 
 const plan: ScheduledPlan = {
@@ -74,4 +74,10 @@ describe("highlightDay", () => {
   it("marks nothing in coarser scales (a week/month cell isn't one day)", () => {
     expect(highlightDay(new Date(2026, 8, 7), "week", "2026-09-07", today)).toBe("");
   });
+});
+
+test("a click that ends a bar drag doesn't count as a click on the task", () => {
+  expect(isDragEnd({ x: 100, y: 50 }, { x: 177, y: 50 })).toBe(true); // dragged 2 days
+  expect(isDragEnd({ x: 100, y: 50 }, { x: 102, y: 51 })).toBe(false); // hand jitter on a click
+  expect(isDragEnd(null, { x: 5, y: 5 })).toBe(false); // no pointerdown seen (keyboard)
 });

@@ -4,7 +4,7 @@ import "@svar-ui/react-gantt/all.css";
 import "./wx-icons/wx-icons.css";
 import "./gantt.css";
 import { toast } from "sonner";
-import { ZOOM_PRESETS, closestTaskId, highlightDay, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
+import { ZOOM_PRESETS, closestTaskId, highlightDay, isDragEnd, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
 import { interpretBarChange, linkDeletionToOperation, linkToOperation } from "./interactions";
 import { RuLocale } from "./locale";
 import type { Operation, ScheduledPlan } from "@/api/types";
@@ -232,13 +232,21 @@ export function GanttView(props: {
     [projectStart],
   );
 
+  // Where the last press started, to tell a click from the end of a bar drag (see isDragEnd).
+  const pointerDown = useRef<{ x: number; y: number } | null>(null);
+
   const ThemeWrapper = props.dark ? WillowDark : Willow;
 
   return (
     <div
       ref={containerRef}
       className="gantt-host h-full min-h-0"
+      // Capture phase: SVAR's own drag handling must not be able to hide the press from us.
+      onPointerDownCapture={(e) => {
+        pointerDown.current = { x: e.clientX, y: e.clientY };
+      }}
       onClick={(e) => {
+        if (isDragEnd(pointerDown.current, { x: e.clientX, y: e.clientY })) return;
         const id = closestTaskId(e.target);
         if (id != null) handlers.current.onOpenTask(id);
       }}

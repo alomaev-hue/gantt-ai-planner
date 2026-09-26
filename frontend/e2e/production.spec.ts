@@ -150,6 +150,28 @@ test("deleting a link in the chart removes the dependency on the server", async 
   await expect.poll(depsOnServer).toBe(before - 1);
 });
 
+// The browser fires `click` after the press + release that ends a bar drag; it used to open the
+// task modal over the change the user had just made.
+test("dragging a bar moves the task and does not open the task modal", async ({ page }) => {
+  await page.goto("/");
+  const bar = page.locator(".wx-bar").first();
+  await expect(bar).toBeVisible();
+  const id = Number(await bar.getAttribute("data-id"));
+  const startOnServer = async () =>
+    ((await (await page.request.get("/api/plan")).json()).plan.tasks as { id: number; start: string }[]).find((t) => t.id === id)!.start;
+  const before = await startOnServer();
+
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.move(box.x + box.width / 2 + 77, box.y + box.height / 2, { steps: 8 }); // ~2 day cells
+  await page.mouse.up();
+
+  await expect.poll(startOnServer).not.toBe(before);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
 test.describe("phone (390px)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
