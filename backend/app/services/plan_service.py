@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -11,7 +12,12 @@ from app.db.repo import VersionDiff, VersionMeta
 from app.domain.diff import Change, diff_plans, summarize_changes
 from app.domain.errors import ConfirmationRequired, DomainError
 from app.domain.models import Plan
-from app.domain.operations import Operation, apply_operations, requires_confirmation
+from app.domain.operations import (
+    Operation,
+    apply_operations,
+    check_batch_size,
+    requires_confirmation,
+)
 from app.domain.scheduler import ScheduledPlan, schedule
 from app.domain.seed import build_demo_plan
 from app.services.errors import AgentBusy, NoSession, NotFound, NothingToRedo, NothingToUndo
@@ -215,6 +221,7 @@ class PlanService:
         turn_id: uuid.UUID | None = None,
         confirmed: bool = False,
     ) -> ApplyOutcome:
+        check_batch_size(ops)  # before confirmation: an oversized batch fails however confirmed
         await self._guard_busy(session_id, source)
         async with self.locks.lock(session_id), self.sessionmaker() as db, db.begin():
             current = await self._state(db, session_id)
@@ -222,7 +229,9 @@ class PlanService:
                 raise ConfirmationRequired(
                     "Пакет удаляет много задач. Спросите пользователя и повторите с confirmed=true"
                 )
-            result = apply_operations(current.plan, ops)
+            # CPU-bound (up to MAX_BATCH_OPS ops on a 500-task plan): run it off the event loop
+            # so SSE heartbeats, /healthz and other sessions stay responsive meanwhile.
+            result = await asyncio.to_thread(apply_operations, current.plan, ops)
             summary = summarize_changes(result.changes)
             if result.changes:
                 await self._commit(

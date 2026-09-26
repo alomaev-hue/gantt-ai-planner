@@ -4,7 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from app.domain.diff import Change
-from app.domain.operations import Operation
+from app.domain.operations import OperationBatch
 from app.domain.scheduler import ScheduledPlan
 from app.excel.parse import ImportIssue
 from app.services.plan_service import PlanState
@@ -19,7 +19,7 @@ class PlanResponse(BaseModel):
 
 
 class ApplyRequest(BaseModel):
-    ops: list[Operation]
+    ops: OperationBatch
 
 
 class ApplyResponse(PlanResponse):

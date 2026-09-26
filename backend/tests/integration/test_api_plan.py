@@ -52,6 +52,15 @@ async def test_errors_envelope(session_client):
     assert r.status_code == 409 and r.json()["error"]["message"] == "Нечего отменять"
 
 
+async def test_oversized_batch_is_rejected_with_russian_message(session_client):
+    ops = [{"op": "delete_task", "id": 1}] * 201  # also over the delete-confirmation threshold
+    r = await session_client.post("/api/plan/operations", json={"ops": ops})
+    assert r.status_code == 422
+    err = r.json()["error"]
+    assert err["code"] == "invalid_operation" and "не больше 200 операций" in err["message"]
+    assert (await session_client.get("/api/plan")).json()["version"] == 1
+
+
 async def test_bad_origin_rejected(session_client):
     r = await session_client.post("/api/plan/reset", headers={"Origin": "https://evil.example"})
     assert r.status_code == 403 and r.json()["error"]["code"] == "bad_origin"

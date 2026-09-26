@@ -27,6 +27,7 @@ async def test_tool_definitions_are_anthropic_shaped(app):
     assert apply["input_schema"]["type"] == "object"
     assert "operations" in apply["input_schema"]["properties"]
     assert "session_id" not in json.dumps(defs)
+    assert apply["input_schema"]["properties"]["operations"]["maxItems"] == 200
 
 
 async def test_get_plan_and_find_tasks(app):
@@ -67,6 +68,15 @@ async def test_domain_errors_become_tool_errors(app):
     batch = [{"op": "delete_task", "id": i} for i in range(1, 8)]
     r = await tools.call("apply_operations", {"operations": batch}, session_id=sid, turn_id=None)
     assert r.is_error and "confirmation_required" in r.text
+
+
+async def test_oversized_batch_is_tool_error(app):
+    sid = await new_sid(app)
+    batch = [{"op": "update_task", "id": 1, "duration": 2}] * 201
+    r = await app.state.tool_client.call(
+        "apply_operations", {"operations": batch}, session_id=sid, turn_id=None
+    )
+    assert r.is_error and "не больше 200 операций" in r.text
 
 
 async def test_sessions_are_isolated_under_concurrency(app):

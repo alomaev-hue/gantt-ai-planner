@@ -243,4 +243,17 @@ def test_shift_of_task_created_in_same_batch_uses_its_scheduled_start():
             {"op": "move_task", "id": 5, "shift_days": 2},
         ),
     )
-    assert res.scheduled.task(5).start == add_expected(add_expected(res.scheduled.task(3).end, 1), 2)
+    first_free_day = add_expected(res.scheduled.task(3).end, 1)
+    assert res.scheduled.task(5).start == add_expected(first_free_day, 2)
+
+
+def test_batch_size_is_capped():
+    from app.domain.operations import MAX_BATCH_OPS
+
+    assert MAX_BATCH_OPS == 200
+    at_cap = ops(*({"op": "update_task", "id": 4, "duration": 2} for _ in range(MAX_BATCH_OPS)))
+    apply_operations(base_plan(), at_cap)
+    over = ops(*({"op": "update_task", "id": 4, "duration": 2} for _ in range(MAX_BATCH_OPS + 1)))
+    with pytest.raises(OperationError) as exc:
+        apply_operations(base_plan(), over)
+    assert "не больше 200 операций" in exc.value.message

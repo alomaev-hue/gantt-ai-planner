@@ -10,7 +10,7 @@ from fastmcp.server.dependencies import get_access_token
 
 from app.domain.diff import format_predecessors
 from app.domain.errors import DomainError
-from app.domain.operations import Operation
+from app.domain.operations import OperationBatch
 from app.domain.render import render_plan_table
 from app.domain.scheduler import ScheduledPlan, ScheduledTask
 from app.mcp_server.context import current_session, current_turn
@@ -116,13 +116,13 @@ def build_mcp(
 
     @mcp.tool
     async def apply_operations(
-        operations: list[Operation], confirmed: bool = False
+        operations: OperationBatch, confirmed: bool = False
     ) -> dict[str, Any]:
         """Атомарно применить пакет операций. Новые задачи получают id по порядку add_task,
         начиная со «следующего свободного id» из get_plan — на них можно ссылаться в этом же
         пакете. move_task задаёт ограничение «не раньше даты», последователи сдвигаются
-        автоматически. При ошибке confirmation_required спросите пользователя и повторите
-        с confirmed=true."""
+        автоматически. Не больше 200 операций в пакете. При ошибке confirmation_required
+        спросите пользователя и повторите с confirmed=true."""
         sid = resolve_session_id()
         turn = current_turn.get()
         try:

@@ -98,6 +98,22 @@ Operation = Annotated[
 ]
 operations_adapter: TypeAdapter[list[Operation]] = TypeAdapter(list[Operation])
 
+# Upper bound on one batch. The whole batch runs synchronously on the single event loop, so an
+# unbounded list would let any visitor stall every session; 200 is far above what a UI edit or an
+# agent step needs (a bulk move of every task of one assignee is a few dozen ops). The limit is
+# advertised as `maxItems` in the API/MCP schemas (OperationBatch) and enforced here, before any
+# work, so the rejection carries a Russian message instead of a generic validation error.
+MAX_BATCH_OPS = 200
+OperationBatch = Annotated[list[Operation], Field(json_schema_extra={"maxItems": MAX_BATCH_OPS})]
+
+
+def check_batch_size(ops: Sequence[Operation]) -> None:
+    if len(ops) > MAX_BATCH_OPS:
+        raise OperationError(
+            f"В одном пакете не больше {MAX_BATCH_OPS} операций (получено {len(ops)}). "
+            "Разбейте изменения на несколько пакетов."
+        )
+
 
 class ApplyResult(BaseModel):
     plan: Plan
@@ -114,6 +130,7 @@ def requires_confirmation(plan: Plan, ops: Sequence[Operation]) -> bool:
 
 
 def apply_operations(plan: Plan, ops: Sequence[Operation]) -> ApplyResult:
+    check_batch_size(ops)
     before = schedule(plan)
     work = plan.model_copy(deep=True)
     created: list[int] = []
