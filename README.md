@@ -8,13 +8,13 @@
 
 ## Демо
 
-**Онлайн-демо:** https://gantt-ai-planner.duckdns.org — **будет доступно после деплоя** (деплой на VPS ещё не выполнен, см. `docs/roadmap-to-production.md` и раздел «Ограничения» ниже).
+**Онлайн-демо: https://gantt-ai-planner.duckdns.org** — задеплоено на VPS владельца (Docker Compose, Caddy + Let's Encrypt; образ собран из коммита `e159b83`) и проверено на настоящей LLM. Живой smoke-тест на проде (агент на модели через OpenRouter, `anthropic/claude-sonnet-5`) прошёл: массовый сдвиг задач одного исполнителя ровно на 3 рабочих дня, назначение исполнителя по неполному имени, добавление задачи с зависимостью и исполнителем одним ходом, переспрос при неоднозначной команде («какую из 4 подходящих задач?») и подтверждение перед массовым удалением (`confirmation_required` → переспрос → удаление после «да»). Подробности — в `docs/ai-usage.md`.
 
 ![Демо](docs/demo.gif)
 
 Основной сценарий (загрузка Excel → правка через чат и на диаграмме → экспорт) — видео в `docs/demo.mp4`.
 
-До появления онлайн-демо всё описанное ниже можно проверить локально по разделу «Быстрый старт».
+Всё описанное ниже можно так же проверить локально по разделу «Быстрый старт».
 
 ## Быстрый старт
 
@@ -24,11 +24,17 @@
 docker compose --profile full up --build
 ```
 
-Открыть http://localhost:8000. По умолчанию используется детерминированный fake-LLM (`LLM_PROVIDER=fake`) — работает без ключей и подходит для проверки функциональности. Чтобы агент отвечал настоящей моделью Claude:
+Открыть http://localhost:8000. По умолчанию используется детерминированный fake-LLM (`LLM_PROVIDER=fake`) — работает без ключей и подходит для проверки функциональности; в тулбаре при этом показан бейдж «Демо-режим без LLM» (см. раздел «Задача: история, загрузка исполнителей, тема» ниже). Чтобы агент отвечал настоящей моделью Claude, есть два варианта провайдера (`backend/app/agent/llm.py`, `backend/app/config.py`):
 
 ```bash
+# напрямую через Anthropic API
 ANTHROPIC_API_KEY=sk-ant-... LLM_PROVIDER=anthropic docker compose --profile full up --build
+
+# через OpenRouter (Anthropic-совместимый эндпоинт), модель anthropic/<LLM_MODEL>
+OPENROUTER_API_KEY=sk-or-v1-... LLM_PROVIDER=openrouter docker compose --profile full up --build
 ```
+
+Ключ вида `sk-or-...`, вставленный в `ANTHROPIC_API_KEY` при `LLM_PROVIDER=anthropic`, тоже распознаётся автоматически и уходит через OpenRouter (с одноразовым предупреждением в логе, без смены `LLM_PROVIDER`) — именно так задеплоено онлайн-демо: у владельца оказался ключ OpenRouter.
 
 Профиль `full` собирает единый образ (multi-stage `Dockerfile`: сборка фронтенда → образ backend) и поднимает три сервиса из `docker-compose.yml`: `db`, разовый `migrate` (`alembic upgrade head`) и `app` (uvicorn, порт 8000). Проверено: `docker compose --profile full up --build -d --wait` поднимает стек, `GET /healthz` отвечает `{"status":"ok"}`.
 
@@ -63,7 +69,7 @@ ANTHROPIC_API_KEY=sk-ant-... LLM_PROVIDER=anthropic docker compose --profile ful
 
    Откроется http://localhost:5173. Dev-сервер Vite проксирует `/api` и `/healthz` на `http://localhost:8000` (см. `frontend/vite.config.ts`), поэтому backend из пункта 2 должен быть запущен.
 
-Переменные окружения перечислены в `.env.example` (корень репозитория) и разбираются `backend/app/config.py`: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD`, `PUBLIC_ORIGIN`, `COOKIE_SECURE`, `LLM_PROVIDER` (`fake` | `anthropic`), `LLM_MODEL`, `ANTHROPIC_API_KEY`.
+Переменные окружения перечислены в `.env.example` (корень репозитория) и разбираются `backend/app/config.py`: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD`, `PUBLIC_ORIGIN`, `COOKIE_SECURE`, `LLM_PROVIDER` (`fake` | `anthropic` | `openrouter`), `LLM_MODEL`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`.
 
 ## Тесты
 
@@ -228,7 +234,7 @@ Browser (React SPA)
 - **Атомарный рейт-лимит чата.** Проверка лимита и вставка сообщения идут в одной транзакции под `pg_advisory_xact_lock`, иначе конкурентные запросы могли бы обойти лимит гонкой (`backend/app/api/routes_chat.py`).
 - **Лимиты на IP.** Не больше 20 новых сессий и 60 сообщений чата в час с одного адреса (`SESSION_LIMIT_PER_IP_HOUR`, `CHAT_LIMIT_PER_IP_HOUR`; скользящее окно в памяти процесса, `backend/app/services/iplimit.py`) — чтобы один клиент не раздувал БД сессиями и не выбирал общий дневной лимит чата. Адрес клиента берётся из последнего звена `X-Forwarded-For` только при `TRUST_PROXY=true` (прод, где запросы приходят только через Caddy), иначе — адрес TCP-соединения. Пакет операций — не больше 200 штук (`MAX_BATCH_OPS`).
 - **Защита импорта Excel.** Лимит на количество строк и проверка заявленного (несжатого) размера содержимого архива `.xlsx` против «zip-бомбы» — до распаковки (`backend/app/excel/parse.py`); имя загружаемого файла санитизируется перед использованием (`backend/app/api/routes_plan.py`, `sanitize_filename`).
-- **CI/CD.** Деплой только из `main` этого репозитория (условие в `.github/workflows/deploy.yml` плюс required reviewers на окружении `production`); образ сканируется Trivy перед публикацией в GHCR. Эксплуатация — `docs/runbook.md`: первичная настройка VPS, деплой, откат, ротация секретов; его ручные команды заменяют `scripts/deploy-manual.sh` из спецификации (§14), отдельного скрипта нет; Dependabot обновляет зависимости backend (uv), frontend (npm), GitHub Actions, `Dockerfile` и compose-файлы деплоя (`.github/dependabot.yml`).
+- **CI/CD.** Деплой только из `main` этого репозитория (условие в `.github/workflows/deploy.yml` плюс required reviewers на окружении `production`); образ сканируется Trivy перед публикацией в GHCR. Приложение задеплоено на VPS по рантбуку `docs/runbook.md`: первый релиз выполнен вручную (§1 — `bootstrap.sh`, первый `docker compose up`, проверка `/healthz`), дальнейшие обновления пойдут через уже настроенный CD-воркфлоу (§2 того же документа — `planner-deploy` с автооткатом при неудачном healthcheck), который пока не запускался ни разу после первого релиза. Эксплуатация — там же: первичная настройка VPS, деплой, откат, ротация секретов; его ручные команды заменяют `scripts/deploy-manual.sh` из спецификации (§14), отдельного скрипта нет; Dependabot обновляет зависимости backend (uv), frontend (npm), GitHub Actions, `Dockerfile` и compose-файлы деплоя (`.github/dependabot.yml`).
 - **Данные уходят к Anthropic.** Сообщения чата и компактное представление плана отправляются в API Anthropic для генерации ответа и вызова инструментов. **Используйте только вымышленные данные** — не загружайте реальные ФИО, контакты или иные персональные данные в демо-план или Excel-файлы. Обработка и хранение реальных персональных данных граждан РФ по 152-ФЗ (в том числе требование о хранении/обработке на территории РФ) для сервиса, физически размещённого не в РФ и использующего внешний LLM-API, не проработана и записана как риск и пункт Roadmap.
 
 ## Как использовались AI-ассистенты
