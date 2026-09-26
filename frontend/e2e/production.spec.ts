@@ -11,6 +11,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CADDYFILE = path.resolve(__dirname, "../../deploy/caddy/Caddyfile");
 const CSP = /Content-Security-Policy "([^"]+)"/.exec(fs.readFileSync(CADDYFILE, "utf8"))?.[1];
 
+// Optional: where to keep the phone screenshot for a human look (not committed).
+const SCREENSHOT_DIR = process.env.E2E_SCREENSHOT_DIR;
+
 declare global {
   interface Window {
     __cspViolations?: string[];
@@ -67,4 +70,33 @@ test("production CSP: no violations, no third-party requests, icon font renders"
 
   expect(await csp.violations()).toEqual([]);
   expect(csp.foreignRequests()).toEqual([]);
+});
+
+test.describe("phone (390px)", () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test("timeline is visible next to a narrow grid", async ({ page }) => {
+    const csp = await enforceProductionCsp(page);
+    await page.goto("/");
+    const bar = page.locator(".wx-bar").first();
+    await expect(bar).toBeVisible();
+    if (SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(SCREENSHOT_DIR, "mobile-390.png") });
+    }
+
+    const grid = await page.locator(".wx-grid, .wx-table-container").first().boundingBox();
+    expect(grid, "grid not rendered").not.toBeNull();
+    expect(grid!.width).toBeLessThanOrEqual(185);
+
+    // At least one bar is drawn in the visible part of the timeline, to the right of the grid.
+    const visibleBars = await page.locator(".wx-bar").evaluateAll((bars, gridRight) =>
+      bars.filter((b) => {
+        const r = b.getBoundingClientRect();
+        return r.width > 0 && r.left >= gridRight && r.left < window.innerWidth;
+      }).length,
+      grid!.x + grid!.width,
+    );
+    expect(visibleBars).toBeGreaterThan(0);
+    expect(await csp.violations()).toEqual([]);
+  });
 });

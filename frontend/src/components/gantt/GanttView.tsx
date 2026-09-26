@@ -21,6 +21,20 @@ const TASK_TYPES = [
 // Исполнитель/Дн. too without squeezing the timeline down to nothing (spec review round 1).
 const NARROW_BREAKPOINT = 480;
 
+// SVAR enters "compact mode" whenever the chart is 650px wide or less, and compact mode never
+// shows grid and timeline side by side: displayMode "all" becomes "grid", and the timeline sits
+// behind a toggle icon (documented: docs.svar.dev/react/gantt/guides/appearance/compact-mode).
+// On a phone that hides the timeline, the point of the app. Our narrow grid (№ + Задача, 180px)
+// leaves the rest of the width to the horizontally scrollable timeline, so keep SVAR out of
+// compact mode. There is no prop for it: the flag only reaches the store through
+// DataStore.init, which the Gantt calls with its full config on every prop change, so that call
+// is wrapped to always pass `_compactMode: false`. Covered by the 390px e2e check.
+function disableCompactMode(api: IApi) {
+  const store = api.getStores().data;
+  const init = store.init.bind(store);
+  store.init = (state) => init({ ...state, _compactMode: false } as typeof state);
+}
+
 // SVAR's own tooltip (`Tooltip`/`content`) resolves `data-task-id` off the hovered element for us
 // and hands back its own `ITask` (an intentionally loose `[key: string]: any` shape) — declaring
 // every field here as optional (rather than importing our stricter `SvarTask`, whose fields are
@@ -118,8 +132,8 @@ export function GanttView(props: {
     () =>
       narrow
         ? [
-            { id: "id", header: "№", width: 36, align: "center" as const },
-            { id: "text", header: "Задача", width: 164, flexgrow: 1 },
+            { id: "id", header: "№", width: 40, align: "center" as const },
+            { id: "text", header: "Задача", width: 140, flexgrow: 1 },
           ]
         : [
             { id: "id", header: "№", width: 44, align: "center" as const },
@@ -133,6 +147,7 @@ export function GanttView(props: {
 
   const init = useCallback((api: IApi) => {
     setApi(api);
+    disableCompactMode(api);
 
     // First-load convenience: scroll the timeline to today, or to the project's start if today
     // falls outside the plan's own range (a demo plan scheduled in the past/future would
