@@ -143,7 +143,26 @@ async function main() {
   const paletteName = "palette.png";
 
   // webm -> mp4 (H.264, yuv420p — universally playable, incl. GitHub's inline preview).
-  runFfmpeg(videoDir, ["-y", "-i", webmName, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4Name]);
+  // Playwright's recordVideo starts capturing at context/page creation, before the app has
+  // painted anything — the raw webm opens on a blank frame, then "Загрузка плана…" while the
+  // initial GET /api/plan round-trip is in flight, and only then the demo plan itself (measured
+  // empirically: blank until ~0.5s, loading text until ~1.3-1.5s). `-ss` placed *after* `-i` here
+  // is output-side (decode-accurate, not keyframe-snapped) seeking, trimming the first 1.6s so
+  // the mp4/gif both open directly on the rendered demo plan.
+  runFfmpeg(videoDir, [
+    "-y",
+    "-i",
+    webmName,
+    "-ss",
+    "1.6",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    mp4Name,
+  ]);
 
   // mp4 -> gif via a generated palette (fps=10, width ~1100) to keep size down.
   runFfmpeg(videoDir, [
