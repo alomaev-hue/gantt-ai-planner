@@ -32,11 +32,10 @@ def _stem(word: str) -> str:
 # Белову") against an existing assignee from the plan table (nominative: "Наталья Белова").
 _RU_DECLENSION_ENDINGS = "аяуюеиыйоь"
 _TABLE_ROW_RE = re.compile(r"^\d+ \| ")
-_TABLE_COLUMNS = 10  # see render_plan_table's header: id|задача|исполнитель|...|флаги
 
 
 def _declension_stem(word: str) -> str:
-    lower = word.lower().replace("ё", "е")
+    lower = word.lower()
     for _ in range(2):
         if lower and lower[-1] in _RU_DECLENSION_ENDINGS:
             lower = lower[:-1]
@@ -64,10 +63,7 @@ def _known_assignees(system: list[dict[str, Any]]) -> list[str]:
             if not _TABLE_ROW_RE.match(line):
                 continue
             fields = line.split(" | ")
-            # render_plan_table sanitizes cells so a row always has exactly this many columns;
-            # a row that doesn't match is malformed (or from a differently-shaped source) and
-            # must be skipped whole rather than parsed with shifted columns.
-            if len(fields) != _TABLE_COLUMNS:
+            if len(fields) < 3:
                 continue
             assignee = fields[2].strip()
             if assignee and assignee != "—" and assignee not in seen:

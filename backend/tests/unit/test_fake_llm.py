@@ -124,35 +124,3 @@ async def test_assign_ambiguous_match_kept_as_typed():
     r = await run_assign("Назначь задачу 5 на Сашу Иванова.", "Саша Иванов", "Саша Иванова")
     op = r.tool_calls[0].input["operations"][0]
     assert op == {"op": "update_task", "id": 5, "assignee": "Сашу Иванова"}
-
-
-async def test_assign_stem_treats_yo_and_ye_as_equal():
-    r = await run_assign("Назначь задачу 5 на Семена Орлова.", "Семён Орлов")
-    op = r.tool_calls[0].input["operations"][0]
-    assert op == {"op": "update_task", "id": 5, "assignee": "Семён Орлов"}
-
-
-async def test_assign_skips_malformed_row_with_embedded_pipe():
-    # A task name containing " | " (e.g. unsanitized legacy data slipping past render.py) shifts
-    # that row's own columns under a naive split, so the old fields[2]-is-the-assignee parse
-    # would misread "Наталия Белова" (part of the task name) as a *second*, bogus assignee that
-    # happens to stem-match the typed name too — turning a clean single match into an ambiguous
-    # one and breaking resolution. The row must be skipped whole instead.
-    header = (
-        "id | задача | исполнитель | длит | предш | не раньше | начало | конец | резерв | флаги"
-    )
-    malformed_row = (
-        "1 | Ревью | Наталия Белова | Олег Смирнов | 2 | — | — | 2026-01-01 | 2026-01-02 | 0 | —"
-    )
-    well_formed_row = (
-        "2 | Другая задача | Наталья Белова | 3 | — | — | 2026-01-01 | 2026-01-03 | 0 | —"
-    )
-    system = [{"type": "text", "text": "\n".join([header, malformed_row, well_formed_row])}]
-    messages = [{"role": "user", "content": "Назначь задачу 5 на Наталью Белову."}]
-    result = None
-    async for ev in FakeLLM().stream(system=system, tools=[], messages=messages):
-        if isinstance(ev, Completed):
-            result = ev.result
-    assert result is not None
-    op = result.tool_calls[0].input["operations"][0]
-    assert op == {"op": "update_task", "id": 5, "assignee": "Наталья Белова"}

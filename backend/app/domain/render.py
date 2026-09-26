@@ -4,14 +4,6 @@ from app.domain.diff import format_predecessors
 from app.domain.scheduler import ScheduledPlan
 
 
-def _sanitize_cell(value: str) -> str:
-    """Task names/assignees are free text and may themselves contain "|" or newlines; keep the
-    rendered table at exactly 10 " | "-separated columns per row (both for the fake LLM's own
-    parser and to keep the table unambiguous for a real model) by neutralizing the delimiter and
-    collapsing any embedded whitespace, including newlines, to single spaces."""
-    return " ".join(value.replace("|", "¦").split())
-
-
 def render_plan_table(sp: ScheduledPlan, today: date) -> str:
     lines = [
         f"Сегодня: {today.isoformat()}. Старт проекта: {sp.project_start.isoformat()}. "
@@ -30,8 +22,8 @@ def render_plan_table(sp: ScheduledPlan, today: date) -> str:
             " | ".join(
                 [
                     str(t.id),
-                    _sanitize_cell(t.name),
-                    _sanitize_cell(t.assignee) if t.assignee else "—",
+                    t.name,
+                    t.assignee or "—",
                     str(t.duration),
                     format_predecessors(sp.dependencies, t.id) or "—",
                     t.constraint_start.isoformat() if t.constraint_start else "—",

@@ -1,6 +1,5 @@
 from datetime import date
 
-from app.domain.models import Plan, Task
 from app.domain.render import render_plan_table
 from app.domain.scheduler import schedule
 from app.domain.seed import build_demo_plan
@@ -32,29 +31,3 @@ def test_render_contains_header_rows_and_next_id():
     assert expected_header in text
     assert text.count("\n") >= len(sp.tasks) + 3
     assert "крит" in text and "перегруз" in text
-
-
-def test_render_sanitizes_pipes_and_newlines_in_free_text_cells():
-    # A task name/assignee containing "|" or a newline must not shift or split table columns —
-    # for the fake LLM's own row parser, and to keep the table unambiguous for a real model.
-    plan = Plan(
-        project_start=date(2026, 9, 21),
-        tasks=[
-            Task(
-                id=1,
-                name="Ревью | дизайна\nвторой абзац",
-                duration=2,
-                assignee="Оля | Смирнова",
-            )
-        ],
-    )
-    sp = schedule(plan)
-    text = render_plan_table(sp, TODAY)
-    row = next(line for line in text.splitlines() if line.startswith("1 | "))
-    assert "\n" not in row
-    fields = row.split(" | ")
-    assert len(fields) == 10
-    # every "|" left in the row is one of the 9 column separators, none from cell content
-    assert row.count("|") == 9
-    assert fields[1] == "Ревью ¦ дизайна второй абзац"
-    assert fields[2] == "Оля ¦ Смирнова"
