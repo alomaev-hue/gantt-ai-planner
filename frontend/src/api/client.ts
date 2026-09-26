@@ -24,6 +24,19 @@ export class ApiError extends Error {
   }
 }
 
+// `fetch` rejects with a bare TypeError ("Failed to fetch" / "NetworkError when attempting to
+// fetch resource") when the server is unreachable — that browser text used to reach the chat's
+// error line and the "Не удалось загрузить план" screen as is. Turn it into our error envelope;
+// an AbortError (the caller cancelled) passes through untouched.
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    throw new ApiError(0, "network_error", "Нет связи с сервером. Проверьте подключение и попробуйте ещё раз.");
+  }
+}
+
 // Query retry policy (QueryClient default): a 4xx won't change on retry — and retrying a 429
 // rate limit (e.g. the per-IP new-session limit) only hammers the server while the UI keeps
 // showing "loading" instead of the server's message. Server/network errors: up to 3 retries.
@@ -44,7 +57,7 @@ let sessionInFlight: Promise<void> | null = null;
 export function ensureSession(): Promise<void> {
   if (!sessionInFlight) {
     sessionInFlight = (async () => {
-      const res = await fetch("/api/session", { method: "POST" });
+      const res = await apiFetch("/api/session", { method: "POST" });
       if (!res.ok) throw await toError(res);
     })().finally(() => {
       sessionInFlight = null;
@@ -62,7 +75,7 @@ export async function toError(res: Response): Promise<ApiError> {
 }
 
 export async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
-  const res = await fetch(path, init);
+  const res = await apiFetch(path, init);
   if (res.status === 401 && !retried) {
     const err = await toError(res.clone());
     if (err.code === "no_session") {
@@ -104,7 +117,7 @@ export const api = {
     const form = new FormData();
     form.append("file", file);
     form.append("project_start", projectStart);
-    const send = () => fetch("/api/plan/import", { method: "POST", body: form });
+    const send = () => apiFetch("/api/plan/import", { method: "POST", body: form });
     let res = await send();
     if (res.status === 401) {
       await ensureSession();

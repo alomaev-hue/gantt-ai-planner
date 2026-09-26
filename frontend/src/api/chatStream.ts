@@ -1,4 +1,4 @@
-import { ensureSession, toError } from "./client";
+import { apiFetch, ensureSession, toError } from "./client";
 import type { ChatEvent } from "./types";
 
 // Parses a chunk of an SSE stream. `\n\n` (or `\r\n\r\n`) separates events; `: ...` lines are
@@ -27,7 +27,7 @@ export function parseSSE(buffer: string): { events: { event: string; data: strin
 // and retries once; any other non-2xx response throws the `ApiError` parsed from the JSON body.
 export async function* streamChat(message: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const post = () =>
-    fetch("/api/chat", {
+    apiFetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message }),
