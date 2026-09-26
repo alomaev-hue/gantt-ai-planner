@@ -5,7 +5,7 @@ import "./wx-icons/wx-icons.css";
 import "./gantt.css";
 import { toast } from "sonner";
 import { ZOOM_PRESETS, closestTaskId, highlightDay, toSvarLinks, toSvarTasks, type Zoom } from "./mapping";
-import { interpretBarChange, linkToOperation } from "./interactions";
+import { interpretBarChange, linkDeletionToOperation, linkToOperation } from "./interactions";
 import { RuLocale } from "./locale";
 import type { Operation, ScheduledPlan } from "@/api/types";
 import { formatRu, addDays, parseISODate } from "@/lib/dates";
@@ -210,6 +210,16 @@ export function GanttView(props: {
         return false;
       },
     );
+
+    // Same for deleting a link (select it, then the ✕ on the bar): left to SVAR, the arrow
+    // vanished only in the browser while the dependency stayed on the server — still driving
+    // the dates, and back on the next refresh.
+    api.intercept("delete-link", ({ id }: { id: number | string }) => {
+      if (handlers.current.readOnly) return false;
+      const op = linkDeletionToOperation(handlers.current.plan.dependencies, id);
+      if (op) void handlers.current.onApply([op]).catch(snapBack);
+      return false;
+    });
   }, [snapBack]);
 
   // SVAR ships two skin wrappers (Willow / WillowDark) rather than reacting to CSS custom

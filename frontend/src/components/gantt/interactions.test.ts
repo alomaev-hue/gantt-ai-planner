@@ -1,4 +1,4 @@
-import { interpretBarChange, linkToOperation } from "./interactions";
+import { interpretBarChange, linkToOperation, linkDeletionToOperation } from "./interactions";
 import { parseISODate } from "@/lib/dates";
 import type { ScheduledTask } from "@/api/types";
 
@@ -31,4 +31,15 @@ test("no change → no operations", () => {
 });
 test("link → add_dependency", () => {
   expect(linkToOperation(1, 3)).toEqual({ op: "add_dependency", predecessor_id: 1, successor_id: 3, lag: 0 });
+});
+
+test("deleting a chart link → remove_dependency for that link's pair", () => {
+  // SVAR link ids are 1-based positions in plan.dependencies (see toSvarLinks).
+  const deps = [
+    { predecessor_id: 1, successor_id: 3, lag: 0 },
+    { predecessor_id: 2, successor_id: 4, lag: 1 },
+  ];
+  expect(linkDeletionToOperation(deps, 2)).toEqual({ op: "remove_dependency", predecessor_id: 2, successor_id: 4 });
+  expect(linkDeletionToOperation(deps, "1")).toEqual({ op: "remove_dependency", predecessor_id: 1, successor_id: 3 });
+  expect(linkDeletionToOperation(deps, 3)).toBeNull();
 });
