@@ -42,17 +42,33 @@ class Agent:
         self._timeout = turn_timeout
 
     async def run_turn(
-        self, session_id: uuid.UUID, user_text: str
+        self, session_id: uuid.UUID, user_text: str, *, turn_id: uuid.UUID | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
+        """Run one agent turn for `user_text`.
+
+        If `turn_id` is given, the caller has *already* persisted the user's chat
+        message under that turn id (e.g. routes_chat.py does this inside the same
+        DB transaction/advisory lock it uses to check the rate limit, so the
+        check-then-insert is atomic) — this method must not insert it again.
+        Direct callers that omit `turn_id` (e.g. tests, MCP-triggered turns) keep
+        the old self-contained behavior: a fresh turn id is generated and the
+        message is saved here.
+        """
         service = self._service
-        turn_id = uuid.uuid4()
+        message_already_saved = turn_id is not None
+        turn_id = turn_id or uuid.uuid4()
         async with service.locks.agent_turn(session_id):
             service.bus.publish(session_id, {"type": "agent_status", "busy": True})
             try:
                 async with service.sessionmaker() as db, db.begin():
-                    await repo.add_chat_message(
-                        db, session_id=session_id, role="user", content=user_text, turn_id=turn_id
-                    )
+                    if not message_already_saved:
+                        await repo.add_chat_message(
+                            db,
+                            session_id=session_id,
+                            role="user",
+                            content=user_text,
+                            turn_id=turn_id,
+                        )
                     history = await repo.recent_chat_messages(db, session_id, self._history_limit)
                 start = await service.get_state(session_id)
                 text_parts: list[str] = []

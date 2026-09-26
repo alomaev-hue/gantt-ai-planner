@@ -1,6 +1,8 @@
 import asyncio
 import json
 
+import httpx
+
 from app.api.routes_events import event_stream
 
 
@@ -38,6 +40,29 @@ async def test_chat_rate_limit(app, session_client):
         [c async for c in r.aiter_text()]
     r = await session_client.post("/api/chat", json={"message": "ещё"})
     assert r.status_code == 429 and r.json()["error"]["code"] == "rate_limited"
+
+
+async def test_chat_daily_limit_is_atomic_under_concurrency(app):
+    """Regression for the check-then-insert race: the day-level count and the chat
+    message insert used to happen in separate transactions (check in the route,
+    insert later inside run_turn()), so concurrent requests from different sessions
+    could all pass the count check before any of them committed its insert and
+    together blow past chat_limit_per_day. With the atomic check+reserve under
+    pg_advisory_xact_lock, at most the limit's worth of requests can ever succeed,
+    however many fire at once.
+    """
+    app.state.settings.chat_limit_per_day = 3
+    transport = httpx.ASGITransport(app=app)
+
+    async def one_request() -> int:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+            assert (await c.post("/api/session")).status_code == 200
+            r = await c.post("/api/chat", json={"message": "привет"})
+            return r.status_code
+
+    statuses = await asyncio.gather(*(one_request() for _ in range(6)))
+    assert statuses.count(200) <= 3
+    assert statuses.count(200) + statuses.count(429) == 6
 
 
 async def test_chat_validation(session_client):

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sse_starlette import EventSourceResponse
 
 from app.api.deps import check_origin, get_service, require_session
@@ -14,6 +15,13 @@ from app.services.errors import AgentBusy
 from app.services.ratelimit import check_chat_limits
 
 router = APIRouter(prefix="/api/chat")
+
+# Arbitrary constant key for pg_advisory_xact_lock: serializes the check-then-insert
+# below across concurrent requests (any session) for the lifetime of the DB
+# transaction, so the per-session/global counts check_chat_limits() sees can never be
+# stale by the time we reserve a slot with the INSERT. Transaction-scoped (`_xact_`),
+# so it's released automatically on commit or rollback — never held past this block.
+CHAT_RATE_LIMIT_LOCK_KEY = 0x63686174  # "chat" packed as a bigint, purely for readability
 
 
 class ChatRequest(BaseModel):
@@ -28,12 +36,24 @@ async def chat(
     settings = request.app.state.settings
     if service.locks.is_busy(session_id):
         raise AgentBusy()
-    async with service.sessionmaker() as db:
+    user_text = body.message.strip()
+    turn_id = uuid.uuid4()
+    # Check-then-reserve, atomically: without the advisory lock, two concurrent
+    # requests could both pass check_chat_limits() (each sees the count *before* the
+    # other's insert) and together exceed chat_limit_per_day/-hour. Taking the message
+    # slot here (INSERT) means run_turn() below must not insert it again.
+    async with service.sessionmaker() as db, db.begin():
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": CHAT_RATE_LIMIT_LOCK_KEY}
+        )
         await check_chat_limits(
             db,
             session_id,
             per_hour=settings.chat_limit_per_hour,
             per_day=settings.chat_limit_per_day,
+        )
+        await repo.add_chat_message(
+            db, session_id=session_id, role="user", content=user_text, turn_id=turn_id
         )
     agent = request.app.state.agent
 
@@ -42,7 +62,7 @@ async def chat(
         # "agent_status: false" publish included) if the client disconnects mid-stream —
         # a bare `async for ... in agent.run_turn(...): yield` would leave that inner
         # generator to be closed only whenever it happens to be garbage-collected.
-        async with aclosing(agent.run_turn(session_id, body.message.strip())) as turn:
+        async with aclosing(agent.run_turn(session_id, user_text, turn_id=turn_id)) as turn:
             async for event in turn:
                 yield {"event": event["type"], "data": json.dumps(event, ensure_ascii=False)}
 
