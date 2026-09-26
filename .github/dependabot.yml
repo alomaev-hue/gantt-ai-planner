@@ -48,6 +48,11 @@ updates:
       minor-and-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    # A Postgres major upgrade needs pg_upgrade or a dump/restore of the data volume:
+    # the new server refuses the old data directory. Done by hand, never by a bot PR.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker-compose"
     directory: "/deploy"
@@ -57,6 +62,11 @@ updates:
       minor-and-patch:
         applies-to: version-updates
         update-types: ["minor", "patch"]
+    # A Postgres major upgrade needs pg_upgrade or a dump/restore of the data volume:
+    # the new server refuses the old data directory. Done by hand, never by a bot PR.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "docker-compose"
     directory: "/deploy/caddy"
