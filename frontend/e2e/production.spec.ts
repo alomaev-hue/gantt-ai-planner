@@ -54,6 +54,12 @@ async function iconFontLoaded(page: Page) {
 
 test("production CSP: no violations, no third-party requests, icon font renders", async ({ page }) => {
   const csp = await enforceProductionCsp(page);
+  // A first visit must not start with 401s (the session is created before anything fetches):
+  // the browser logs every failed response as a console error.
+  const failed: string[] = [];
+  page.on("response", (r) => {
+    if (r.status() >= 400) failed.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+  });
   await page.goto("/");
   await expect(page.getByText("Сбор требований и приоритизация").last()).toBeVisible();
 
@@ -70,6 +76,7 @@ test("production CSP: no violations, no third-party requests, icon font renders"
 
   expect(await csp.violations()).toEqual([]);
   expect(csp.foreignRequests()).toEqual([]);
+  expect(failed).toEqual([]);
 });
 
 test.describe("phone (390px)", () => {

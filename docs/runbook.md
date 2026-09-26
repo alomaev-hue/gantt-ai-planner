@@ -50,11 +50,12 @@
    - устанавливает cron `/etc/cron.d/gantt-planner-backup` (03:15 каждый
      день).
 3. После bootstrap вручную:
-   - сделать пакет `ghcr.io/alomaev-hue/gantt-ai-planner` публичным —
-     **один раз**, иначе `docker compose pull` на сервере (без залогина в
-     GHCR) не сможет скачать образ: GitHub → профиль/организация →
-     Packages → `gantt-ai-planner` → Package settings → Change
-     visibility → Public;
+   - убедиться, что пакет `ghcr.io/alomaev-hue/gantt-ai-planner` публичный,
+     иначе `docker compose pull` на сервере (без залогина в GHCR) не сможет
+     скачать образ. Пакет, опубликованный из Actions публичного
+     репозитория, наследует его видимость (так и вышло на этом проде); если
+     он всё же приватный — GitHub → профиль/организация → Packages →
+     `gantt-ai-planner` → Package settings → Change visibility → Public;
    - вписать реальный ключ LLM — по умолчанию (`LLM_PROVIDER=openrouter`,
      который bootstrap уже прописал в `/opt/gantt-planner/.env`) это ключ
      OpenRouter (`sk-or-v1-...`) в
