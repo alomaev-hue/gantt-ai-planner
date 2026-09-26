@@ -7,6 +7,7 @@ import type { PlanResponse } from "@/api/types";
 import { PLAN_KEY } from "@/hooks/usePlan";
 import { useMeta } from "@/hooks/useMeta";
 import type { ThemeMode } from "@/hooks/useTheme";
+import { deleteMyData } from "@/lib/deleteMyData";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { McpConnectDialog } from "@/components/McpConnectDialog";
@@ -211,7 +212,7 @@ export function Toolbar({
         confirmLabel="Удалить"
         destructive
         onConfirm={() => {
-          void api.deleteSession().finally(() => location.reload());
+          void deleteMyData(api.deleteSession, () => location.reload(), (message) => toast.error(message));
         }}
       />
     </div>
