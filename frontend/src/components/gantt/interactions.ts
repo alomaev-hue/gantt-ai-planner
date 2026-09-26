@@ -3,7 +3,15 @@
 // classify *what the user did* (moved vs. resized) and emit the matching Operation; the server
 // recomputes everything else on `POST /api/plan/operations`.
 import { addDays, parseISODate, toISODate, workdaysBetweenInclusive } from "@/lib/dates";
-import type { AddDependencyOp, MoveTaskOp, Operation, ScheduledTask, UpdateTaskOp } from "@/api/types";
+import type {
+  AddDependencyOp,
+  Dependency,
+  MoveTaskOp,
+  Operation,
+  RemoveDependencyOp,
+  ScheduledTask,
+  UpdateTaskOp,
+} from "@/api/types";
 
 function sameDate(a: Date, b: Date): boolean {
   return a.getTime() === b.getTime();
@@ -45,4 +53,14 @@ export function interpretBarChange(before: ScheduledTask, newStart: Date, newEnd
 
 export function linkToOperation(source: number, target: number): AddDependencyOp {
   return { op: "add_dependency", predecessor_id: source, successor_id: target, lag: 0 };
+}
+
+// SVAR lets the user select a link and delete it with the ✕ on the bar; the link id it reports
+// is the 1-based position in plan.dependencies (toSvarLinks). Returns null for an unknown id.
+export function linkDeletionToOperation(
+  dependencies: readonly Dependency[],
+  linkId: number | string,
+): RemoveDependencyOp | null {
+  const dep = dependencies[Number(linkId) - 1];
+  return dep ? { op: "remove_dependency", predecessor_id: dep.predecessor_id, successor_id: dep.successor_id } : null;
 }

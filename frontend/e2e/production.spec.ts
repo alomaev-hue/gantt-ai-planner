@@ -120,6 +120,36 @@ test("project start is marked on the timeline and in the legend", async ({ page 
   await expect(page.locator(".wx-cell.wx-col-startLabel").filter({ hasText: /^\d{2}\.\d{2}$/ }).first()).toHaveText(`${dd}.${mm}`);
 });
 
+// Deleting a link in the chart (select the arrow, then the ✕ on the bar) must reach the server:
+// left to SVAR it only vanished in the browser while the dependency kept driving the dates.
+test("deleting a link in the chart removes the dependency on the server", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".wx-bar").first()).toBeVisible();
+  const depsOnServer = async () => ((await (await page.request.get("/api/plan")).json()).plan.dependencies as unknown[]).length;
+  const before = await depsOnServer();
+
+  // Click the middle of a long segment of some arrow (its ends overlap the bars' link handles).
+  const pt = await page.evaluate(() => {
+    const view = document.querySelector(".wx-chart")!.getBoundingClientRect();
+    let best: { x: number; y: number; len: number } | null = null;
+    for (const pl of document.querySelectorAll<SVGPolylineElement>(".wx-line-hitbox")) {
+      const box = pl.ownerSVGElement!.getBoundingClientRect();
+      for (let i = 1; i < pl.points.numberOfItems - 2; i++) {
+        const a = pl.points.getItem(i), b = pl.points.getItem(i + 1);
+        const len = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        const x = box.left + (a.x + b.x) / 2, y = box.top + (a.y + b.y) / 2;
+        const onScreen = x > view.left + 5 && x < view.right - 20 && y > view.top + 80 && y < view.bottom - 20;
+        if (onScreen && document.elementFromPoint(x, y) === pl && (!best || len > best.len)) best = { x, y, len };
+      }
+    }
+    return best!;
+  });
+  await page.mouse.click(pt.x, pt.y);
+  await page.locator(".wx-delete-button-icon").first().click();
+
+  await expect.poll(depsOnServer).toBe(before - 1);
+});
+
 test.describe("phone (390px)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
