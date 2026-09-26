@@ -2,6 +2,12 @@ import type { ChatMessage } from "@/api/types";
 import { cn } from "@/lib/utils";
 import { DiffSummary } from "./DiffSummary";
 
+// The prompt asks the model for plain text, but models still emit **bold** now and then; show it
+// as bold instead of literal asterisks. Only this one construct — no Markdown renderer, no HTML.
+function withBold(text: string) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
+}
+
 export function MessageItem({
   message,
   onFocusTask,
@@ -22,7 +28,7 @@ export function MessageItem({
           isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground",
         )}
       >
-        {message.content}
+        {isUser ? message.content : withBold(message.content)}
         {message.meta?.changes && message.meta.changes.length > 0 && (
           <DiffSummary
             summary={message.meta.summary ?? `Изменено задач: ${message.meta.changes.length}`}
