@@ -21,6 +21,8 @@ test("tasks map with exclusive end and types", () => {
   expect(a.slack).toBe(0);
   expect(b.type).toBe("changed");
   expect(b.slack).toBe(1);
+  expect(a.startLabel).toBe("21.09");
+  expect(b.startLabel).toBe("24.09");
 });
 
 test("an overloaded, non-critical task not currently highlighted maps to the conflict type", () => {

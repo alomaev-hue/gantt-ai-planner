@@ -7,6 +7,7 @@ export type Zoom = "day" | "week" | "month";
 export interface SvarTask {
   id: number; text: string; start: Date; end: Date; type: "task" | "critical" | "changed" | "conflict";
   progress: number; assignee: string; workDays: number; slack: number; conflict: boolean;
+  startLabel: string; // "дд.мм" for the grid's «Начало» column
 }
 export interface SvarLink { id: number; source: number; target: number; type: "e2s" }
 
@@ -32,6 +33,7 @@ export function toSvarTasks(plan: ScheduledPlan, highlighted: ReadonlySet<number
     workDays: t.duration,
     slack: t.slack,
     conflict: t.overallocated_with.length > 0,
+    startLabel: `${t.start.slice(8, 10)}.${t.start.slice(5, 7)}`,
   }));
 }
 
