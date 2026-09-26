@@ -64,6 +64,18 @@
      `FakeLLM` вместо `AnthropicLLM`, само приложение при этом не падает;
      текущий режим виден в ответе `GET /api/meta` (`llm_mode`) и
      значком в UI;
+   - настроить GitHub Environment `production` (Settings → Environments →
+     `production`) — **обязательно до первого мёржа в `main`**, это
+     внешняя настройка, в репозитории её не видно:
+     - **Required reviewers** — владелец репозитория: каждый деплой ждёт
+       ручного подтверждения;
+     - **Deployment branches and tags** → Selected branches → `main`.
+     `deploy.yml` сам проверяет, что запуск пришёл из `push` в `main` этого
+     репозитория (а не из PR форка с веткой `main`) или что
+     `workflow_dispatch` запущен на `main`; настройки окружения — второй
+     рубеж на случай ошибки в этом условии. Секреты `DEPLOY_SSH_KEY` и
+     `DEPLOY_KNOWN_HOSTS` хранить только в этом окружении, не в секретах
+     репозитория;
    - добавить публичный deploy-ключ CI в
      `/home/deploy/.ssh/authorized_keys` строкой вида:
      ```

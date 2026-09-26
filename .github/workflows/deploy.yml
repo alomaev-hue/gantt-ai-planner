@@ -15,19 +15,33 @@ concurrency: deploy-prod
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    # Deploy only code that is on main of THIS repository:
+    # - `workflow_run.branches: [main]` above filters on the triggering run's head_branch, which a
+    #   fork PR opened from the fork's own `main` also matches — so the run must additionally come
+    #   from a `push` event in this repository (a PR run has event `pull_request`);
+    # - a manual run must be dispatched on main (the UI lets you pick any branch).
+    # Second layer (external setting, see docs/runbook.md §1): the `production` environment has
+    # required reviewers and the deployment branch policy `main`.
+    if: >-
+      (github.event_name == 'workflow_run'
+       && github.event.workflow_run.conclusion == 'success'
+       && github.event.workflow_run.event == 'push'
+       && github.event.workflow_run.head_branch == 'main'
+       && github.event.workflow_run.head_repository.full_name == github.repository)
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     environment: production
+    env:
+      # The exact commit CI tested for workflow_run; the dispatched main commit otherwise.
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ env.DEPLOY_SHA }}
           persist-credentials: false
 
       - id: meta
-        run: |
-          sha="${{ github.event.workflow_run.head_sha || github.sha }}"
-          echo "tag=sha-${sha:0:7}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=sha-${DEPLOY_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
