@@ -80,3 +80,24 @@ async def test_event_stream_generator(app):
     assert second["event"] == "plan_changed"
     await gen.aclose()
     assert sid not in bus._subs
+
+
+async def test_busy_after_reservation_leaves_no_orphan_user_message(
+    app, session_client, monkeypatch
+):
+    """Two sends from one session can both pass the route's is_busy() check; the loser only
+    learns it is busy inside the SSE stream (after its user message was reserved). That
+    reserved message must be removed, and the stream must end with an agent_busy error."""
+    service = app.state.service
+    token = session_client.cookies.get("sid")
+    sid = await service.resolve_session(token)
+    monkeypatch.setattr(service.locks, "is_busy", lambda _sid: False)
+    async with (
+        service.locks.agent_turn(sid),  # another turn is running
+        session_client.stream("POST", "/api/chat", json={"message": "ещё"}) as r,
+    ):
+        assert r.status_code == 200
+        body = "".join([chunk async for chunk in r.aiter_text()])
+    events = parse_sse(body)
+    assert events[-1]["event"] == "error" and events[-1]["data"]["code"] == "agent_busy"
+    assert (await session_client.get("/api/chat/history")).json() == []

@@ -24,6 +24,10 @@ router = APIRouter(prefix="/api/chat")
 CHAT_RATE_LIMIT_LOCK_KEY = 0x63686174  # "chat" packed as a bigint, purely for readability
 
 
+def _sse(event: dict[str, Any]) -> dict[str, str]:
+    return {"event": event["type"], "data": json.dumps(event, ensure_ascii=False)}
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
 
@@ -62,9 +66,18 @@ async def chat(
         # "agent_status: false" publish included) if the client disconnects mid-stream —
         # a bare `async for ... in agent.run_turn(...): yield` would leave that inner
         # generator to be closed only whenever it happens to be garbage-collected.
-        async with aclosing(agent.run_turn(session_id, user_text, turn_id=turn_id)) as turn:
-            async for event in turn:
-                yield {"event": event["type"], "data": json.dumps(event, ensure_ascii=False)}
+        try:
+            async with aclosing(agent.run_turn(session_id, user_text, turn_id=turn_id)) as turn:
+                async for event in turn:
+                    yield _sse(event)
+        except AgentBusy as exc:
+            # A concurrent send from this session won the race after our is_busy() check
+            # (run_turn raises before doing anything). The 200 is already out, so report it
+            # in-stream, and drop the reserved user message: it would otherwise stay in the
+            # history as a question that never gets an answer.
+            async with service.sessionmaker() as db, db.begin():
+                await repo.delete_turn_messages(db, session_id, turn_id)
+            yield _sse({"type": "error", "code": exc.code, "message": exc.message})
 
     return EventSourceResponse(gen(), ping=15, sep="\n")
 

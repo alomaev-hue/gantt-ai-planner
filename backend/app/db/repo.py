@@ -150,6 +150,14 @@ async def add_chat_message(
     return row
 
 
+async def delete_turn_messages(db: AsyncSession, session_id: uuid.UUID, turn_id: uuid.UUID) -> None:
+    await db.execute(
+        delete(ChatMessageRow).where(
+            ChatMessageRow.session_id == session_id, ChatMessageRow.turn_id == turn_id
+        )
+    )
+
+
 async def recent_chat_messages(
     db: AsyncSession, session_id: uuid.UUID, limit: int
 ) -> list[ChatMessageRow]:
