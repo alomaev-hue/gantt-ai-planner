@@ -11,14 +11,21 @@ interface AgentStatusPayload {
 
 // backend/app/services/plan_service.py `_publish`: {type, version, source, turn_id, changed_task_ids}.
 interface PlanChangedPayload {
+  source?: string;
   changed_task_ids?: number[];
 }
 
+// Sources that replace the whole plan: every task id is "changed", so highlighting them would
+// just paint the entire chart in the highlight colour.
+const REPLACING_SOURCES = new Set(["import", "reset", "seed"]);
+
 // Pure so it's easy to unit test: parses the SSE `plan_changed` event's `data` string and
-// returns the changed task ids, or `[]` for malformed/missing data instead of throwing.
+// returns the task ids to highlight — `[]` for a whole-plan replacement, and for
+// malformed/missing data instead of throwing.
 export function parsePlanChanged(data: string): number[] {
   try {
     const payload = JSON.parse(data) as PlanChangedPayload;
+    if (payload.source && REPLACING_SOURCES.has(payload.source)) return [];
     return Array.isArray(payload.changed_task_ids) ? payload.changed_task_ids : [];
   } catch {
     return [];
@@ -27,8 +34,8 @@ export function parsePlanChanged(data: string): number[] {
 
 // Opens the session-wide live event stream (GET /api/events): `agent_status` toggles the busy
 // flag surfaced here, `plan_changed` invalidates the plan query and reports the ids the change
-// touched (so the Gantt can pulse them — this fires for every source: agent, user, mcp, reset,
-// undo, not just the tab that made the change). On a stream error it closes, re-establishes the
+// touched (so the Gantt can pulse them — this fires for every source: agent, user, mcp, undo,
+// not just the tab that made the change; import/reset report none). On a stream error it closes, re-establishes the
 // session, and reconnects after a short delay.
 export function useSessionEvents(onPlanChanged: (ids: number[]) => void): { agentBusy: boolean } {
   const queryClient = useQueryClient();

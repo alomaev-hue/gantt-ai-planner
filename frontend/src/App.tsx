@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/api/client";
 import type { Operation } from "@/api/types";
 import { PLAN_KEY, usePlan } from "@/hooks/usePlan";
+import { useFlashHighlight } from "@/hooks/useFlashHighlight";
 import { useSessionEvents } from "@/hooks/useSessionEvents";
 import { useTheme } from "@/hooks/useTheme";
 import { SplitLayout } from "@/components/SplitLayout";
@@ -21,15 +22,16 @@ function App() {
   const { data, isLoading, isError, error } = usePlan();
   const { theme, isDark, setTheme } = useTheme();
   const [zoom, setZoom] = useState<Zoom>("day");
-  const [focusedIds, setFocusedIds] = useState<ReadonlySet<number>>(() => new Set());
+  const [focusedIds, flashFocused] = useFlashHighlight();
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
-  // Every plan change — from this tab, the agent, another tab, or an import/undo/reset —
-  // arrives here via the session-wide event bus, so this is the single source of highlighted
-  // ids (a click in the chat's diff summary sets it too, via `onFocusTask` below).
+  // Every plan change — from this tab, the agent, another tab, or an undo — arrives here via the
+  // session-wide event bus, so this is the single source of highlighted ids (a click in the
+  // chat's diff summary sets it too, via `onFocusTask` below). The highlight clears after
+  // HIGHLIGHT_MS; imports/resets report no ids (see parsePlanChanged).
   const { agentBusy } = useSessionEvents((ids) => {
-    if (ids.length) setFocusedIds(new Set(ids));
+    if (ids.length) flashFocused(ids);
   });
 
   const openTask = data?.plan.tasks.find((t) => t.id === openTaskId) ?? null;
@@ -105,7 +107,7 @@ function App() {
               </div>
             }
             right={
-              <ChatPanel onFocusTask={(id) => setFocusedIds(new Set([id]))} agentBusy={agentBusy} />
+              <ChatPanel onFocusTask={(id) => flashFocused([id])} agentBusy={agentBusy} />
             }
           />
         )}

@@ -13,3 +13,10 @@ test("defaults to [] when changed_task_ids is missing", () => {
 test("defaults to [] on malformed JSON instead of throwing", () => {
   expect(parsePlanChanged("not json")).toEqual([]);
 });
+
+test("whole-plan replacements (import, reset) highlight nothing", () => {
+  for (const source of ["import", "reset", "seed"]) {
+    expect(parsePlanChanged(JSON.stringify({ type: "plan_changed", source, changed_task_ids: [1, 2] }))).toEqual([]);
+  }
+  expect(parsePlanChanged(JSON.stringify({ type: "plan_changed", source: "agent", changed_task_ids: [3] }))).toEqual([3]);
+});
