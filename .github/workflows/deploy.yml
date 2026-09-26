@@ -21,7 +21,7 @@ jobs:
     #   from a `push` event in this repository (a PR run has event `pull_request`);
     # - a manual run must be dispatched on main (the UI lets you pick any branch).
     # Second layer (external setting, see docs/runbook.md §1): the `production` environment has
-    # required reviewers and the deployment branch policy `main`.
+    # the deployment branch policy `main` (required reviewers are optional).
     if: >-
       (github.event_name == 'workflow_run'
        && github.event.workflow_run.conclusion == 'success'
