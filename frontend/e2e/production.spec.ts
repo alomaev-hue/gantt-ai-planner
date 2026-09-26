@@ -79,6 +79,30 @@ test("production CSP: no violations, no third-party requests, icon font renders"
   expect(failed).toEqual([]);
 });
 
+// The chart must be exactly as tall as its pane: when SVAR's wrappers had auto height, the chart
+// grew to the height of all rows and the pane clipped it — the rows below the fold were
+// unreachable and the timeline's horizontal scrollbar was hidden under the pane's bottom edge.
+test("gantt fits its pane: last task reachable, timeline scrollbar inside the pane", async ({ page }) => {
+  await page.goto("/");
+  const chart = page.locator(".wx-chart");
+  await expect(page.locator(".wx-bar").first()).toBeVisible();
+  // Compare against the nearest clipping ancestor outside SVAR (the layout pane).
+  const fit = await chart.evaluate((el) => {
+    let pane = el.parentElement;
+    while (pane && (getComputedStyle(pane).overflow === "visible" || pane.className.includes("wx-"))) {
+      pane = pane.parentElement;
+    }
+    return { chartBottom: el.getBoundingClientRect().bottom, paneBottom: pane!.getBoundingClientRect().bottom };
+  });
+  expect(fit.chartBottom).toBeLessThanOrEqual(fit.paneBottom + 1);
+
+  const last = page.getByText("Релиз и ретроспектива").first();
+  const box = (await chart.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 10 && !(await last.isVisible()); i++) await page.mouse.wheel(0, 300);
+  await expect(last).toBeInViewport();
+});
+
 test.describe("phone (390px)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

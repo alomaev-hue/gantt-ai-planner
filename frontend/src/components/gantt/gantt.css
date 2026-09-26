@@ -103,3 +103,14 @@
 .wx-cell.wx-col-text .wx-content {
   padding-left: 9px !important;
 }
+
+/* SVAR's theme wrappers (Willow renders two nested `.wx-theme` divs) and the Tooltip's
+   `.wx-tooltip-area` are plain blocks with auto height, so `.wx-gantt`'s own `height: 100%`
+   resolved against its content: the chart grew to the full height of all rows and the pane
+   (overflow: hidden) clipped it — no vertical scrolling past the visible rows, and the
+   timeline's horizontal scrollbar sat below the visible area. Stretch the chain to the pane. */
+.gantt-host > .wx-theme,
+.gantt-host > .wx-theme > .wx-theme,
+.gantt-host > .wx-theme > .wx-theme > .wx-tooltip-area {
+  height: 100%;
+}
