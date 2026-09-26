@@ -91,8 +91,14 @@ export function useChat(): {
               break;
             }
             case "error":
-              setError(event.message);
-              setTurnMessages((prev) => [...prev, localMessage("assistant", event.message, { error: event.code })]);
+              // A failed turn is saved by the server as the assistant's reply, so it shows once,
+              // as that bubble. `agent_busy` is the exception: that turn never started and
+              // nothing was saved (its message is dropped), so it goes to the error line.
+              if (event.code === "agent_busy") {
+                setError(event.message);
+              } else {
+                setTurnMessages((prev) => [...prev, localMessage("assistant", event.message, { error: event.code })]);
+              }
               break;
           }
         }
