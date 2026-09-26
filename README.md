@@ -59,7 +59,7 @@ OPENROUTER_API_KEY=sk-or-v1-... LLM_PROVIDER=openrouter docker compose --profile
 
    API поднимется на http://localhost:8000, интерактивная документация — на `/api/docs`. Backend читает настройки из `backend/.env` (скопируйте `.env.example` из корня репозитория) — там же переменная `LLM_PROVIDER=fake`, по умолчанию агент работает без ключа Anthropic.
 
-3. Frontend (Node 20, Vite):
+3. Frontend (Node 26; не ниже 22.12 — этого требуют vitest 5 и jsdom 30; Vite):
 
    ```bash
    cd frontend
