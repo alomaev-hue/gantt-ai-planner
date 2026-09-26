@@ -103,6 +103,19 @@ test("gantt fits its pane: last task reachable, timeline scrollbar inside the pa
   await expect(last).toBeInViewport();
 });
 
+// Where the schedule is counted from: a line down the project start column (the demo's first
+// task starts there), plus the dates in the legend.
+test("project start is marked on the timeline and in the legend", async ({ page }) => {
+  await page.goto("/");
+  const firstBar = page.locator(".wx-bar").first();
+  await expect(firstBar).toBeVisible();
+  const line = (await page.locator(".wx-gantt-holidays > .gantt-project-start").boundingBox())!;
+  const bar = (await firstBar.boundingBox())!;
+  expect(line.height).toBeGreaterThan(100);
+  expect(Math.abs(line.x - bar.x)).toBeLessThanOrEqual(2);
+  await expect(page.getByText(/^Старт \d{2}\.\d{2}\.\d{4} · Окончание \d{2}\.\d{2}\.\d{4}$/)).toBeVisible();
+});
+
 test.describe("phone (390px)", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 

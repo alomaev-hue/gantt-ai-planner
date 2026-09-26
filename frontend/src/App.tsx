@@ -103,7 +103,7 @@ function App() {
                     onApply={onApplyPlanOps}
                   />
                 </div>
-                <GanttLegend />
+                <GanttLegend projectStart={data.plan.project_start} projectEnd={data.plan.project_end} />
                 <ResourcePanel plan={data.plan} onOpenTask={(id) => setOpenTaskId(id)} />
               </div>
             }
