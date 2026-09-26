@@ -127,3 +127,44 @@ async def test_llm_error_after_partial_text_persists_error_not_partial(app):
     assert "Сейчас перене" not in assistant_msg.content
     assert assistant_msg.meta["partial_text"] == "Сейчас перене"
     assert assistant_msg.meta["error"] == "llm_unavailable"
+
+
+async def test_text_from_separate_iterations_is_separated(app):
+    class TalksAroundToolCall:
+        async def stream(self, *, system, tools, messages):
+            if len(messages) == 1:
+                yield TextDelta("Смотрю план.")
+                call = LLMToolCall(id="t1", name="get_plan", input={})
+                yield Completed(
+                    LLMTurnResult(
+                        text="Смотрю план.",
+                        tool_calls=[call],
+                        stop_reason="tool_use",
+                        content=[
+                            {"type": "text", "text": "Смотрю план."},
+                            {"type": "tool_use", "id": "t1", "name": "get_plan", "input": {}},
+                        ],
+                    )
+                )
+            else:
+                yield TextDelta("Готово")
+                yield TextDelta(", всё в порядке.")
+                yield Completed(
+                    LLMTurnResult(
+                        text="Готово, всё в порядке.",
+                        tool_calls=[],
+                        stop_reason="end_turn",
+                        content=[{"type": "text", "text": "Готово, всё в порядке."}],
+                    )
+                )
+
+    sid = await new_sid(app)
+    agent = Agent(
+        TalksAroundToolCall(), app.state.tool_client, app.state.service, today=lambda: TODAY
+    )
+    events = await collect(agent, sid, "проверь план")
+    streamed = "".join(e["text"] for e in events if e["type"] == "text_delta")
+    assert streamed == "Смотрю план.\n\nГотово, всё в порядке."
+    async with app.state.service.sessionmaker() as db:
+        msgs = await repo.recent_chat_messages(db, sid, 10)
+    assert msgs[-1].content == "Смотрю план.\n\nГотово, всё в порядке."

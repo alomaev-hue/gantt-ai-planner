@@ -198,8 +198,15 @@ class Agent:
         tools = await self._tools.tool_definitions()
         for _ in range(self._max_iterations):
             result: LLMTurnResult | None = None
+            # Text written before a tool call and text written after it are separate
+            # paragraphs; without a separator they would run together ("…план.Готово").
+            needs_separator = bool("".join(text_parts).strip())
             async for ev in self._llm.stream(system=system, tools=tools, messages=messages):
                 if isinstance(ev, TextDelta):
+                    if needs_separator and ev.text.strip():
+                        needs_separator = False
+                        text_parts.append("\n\n")
+                        yield {"type": "text_delta", "text": "\n\n"}
                     text_parts.append(ev.text)
                     yield {"type": "text_delta", "text": ev.text}
                 elif isinstance(ev, Completed):
